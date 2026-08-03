@@ -1,0 +1,17 @@
+# Python virtual environment
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+
+# IDE / System
+.vscode/
+.idea/
+*.log
