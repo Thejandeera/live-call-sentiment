@@ -1,0 +1,91 @@
+### ===================================================================
+### EMOTION MATRIX MICROSERVICES - HTTP REQUESTS TEST SUITE
+### ===================================================================
+
+### -------------------------------------------------------------------
+### 1. API GATEWAY (Port 8000)
+### -------------------------------------------------------------------
+
+### 1a. Process Direct Text Message (Agent or Caller)
+POST http://localhost:8000/api/v1/process-message
+Content-Type: application/json
+
+{
+  "text": "I am extremely unhappy and I want to cancel my account immediately.",
+  "speaker": "caller"
+}
+
+### 1b. Process Direct Text Message (Agent Response)
+POST http://localhost:8000/api/v1/process-message
+Content-Type: application/json
+
+{
+  "text": "I completely understand your concern and I am happy to help resolve this for you right away.",
+  "speaker": "agent"
+}
+
+### 1c. Process Audio Payload (Base64 WAV/MP3)
+POST http://localhost:8000/api/v1/process-audio
+Content-Type: application/json
+
+{
+  "audio_data": "//NkxAAAAANIAAAAAExBTUVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV==",
+  "speaker": "caller"
+}
+
+
+### -------------------------------------------------------------------
+### 2. WHISPER TRANSCRIPTION SERVICE (Port 8001)
+### -------------------------------------------------------------------
+
+### Transcribe Base64 Audio
+POST http://localhost:8001/transcribe/base64
+Content-Type: application/json
+
+{
+  "audio_data": "//NkxAAAAANIAAAAAExBTUVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV=="
+}
+
+
+### -------------------------------------------------------------------
+### 3. KEYWORD DETECTION SERVICE (Port 8002)
+### -------------------------------------------------------------------
+
+### Extract & Detect Admin Keywords
+POST http://localhost:8002/extract-keywords
+Content-Type: application/json
+
+{
+  "text": "I want to cancel my account because of terrible service."
+}
+
+
+### -------------------------------------------------------------------
+### 4. SENTIMENT & EMOTION SERVICE (Port 8003)
+### -------------------------------------------------------------------
+
+### 4a. Analyze Single Sentence Sentiment (RoBERTa)
+POST http://localhost:8003/analyze-sentiment
+Content-Type: application/json
+
+{
+  "text": "Thank you so much for your quick and wonderful support!"
+}
+
+### 4b. Analyze Batch Sentences Sentiment (RoBERTa Vectorized Batch)
+POST http://localhost:8003/analyze-sentiment-batch
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "isolated_sentence": "This service is terrible and completely unacceptable."
+    },
+    {
+      "isolated_sentence": "I appreciate your help in resolving my billing problem."
+    },
+    {
+      "isolated_sentence": "My customer ID number is 98765."
+    }
+  ]
+}
