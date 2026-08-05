@@ -45,6 +45,7 @@ async def shutdown_event():
         await http_client.aclose()
 
 @app.post("/api/v1/process-message")
+@app.post("/api/v1/process-text")
 async def process_message(payload: MessagePayload):
     try:
         start_time = time.perf_counter()

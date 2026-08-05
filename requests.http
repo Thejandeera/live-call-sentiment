@@ -1,18 +1,11 @@
-### ===================================================================
-### EMOTION MATRIX MICROSERVICES - HTTP REQUESTS TEST SUITE
-### ===================================================================
 
-### -------------------------------------------------------------------
-### 1. API GATEWAY (Port 8000)
-### -------------------------------------------------------------------
 
 ### 1a. Process Direct Text Message (Agent or Caller)
 POST http://localhost:8000/api/v1/process-message
 Content-Type: application/json
 
 {
-  "text": "I am extremely unhappy and I want to cancel my account immediately.",
-  "speaker": "caller"
+  "text": "I am extremely never good refund unhappy and I want to cancel my account immediately."
 }
 
 ### 1b. Process Direct Text Message (Agent Response)
@@ -24,32 +17,7 @@ Content-Type: application/json
   "speaker": "agent"
 }
 
-### 1c. Process Audio Payload (Base64 WAV/MP3)
-POST http://localhost:8000/api/v1/process-audio
-Content-Type: application/json
 
-{
-  "audio_data": "//NkxAAAAANIAAAAAExBTUVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV==",
-  "speaker": "caller"
-}
-
-
-### -------------------------------------------------------------------
-### 2. WHISPER TRANSCRIPTION SERVICE (Port 8001)
-### -------------------------------------------------------------------
-
-### Transcribe Base64 Audio
-POST http://localhost:8001/transcribe/base64
-Content-Type: application/json
-
-{
-  "audio_data": "//NkxAAAAANIAAAAAExBTUVVVVVMQU1FMy4xMDBVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV=="
-}
-
-
-### -------------------------------------------------------------------
-### 3. KEYWORD DETECTION SERVICE (Port 8002)
-### -------------------------------------------------------------------
 
 ### Extract & Detect Admin Keywords
 POST http://localhost:8002/extract-keywords
@@ -60,9 +28,6 @@ Content-Type: application/json
 }
 
 
-### -------------------------------------------------------------------
-### 4. SENTIMENT & EMOTION SERVICE (Port 8003)
-### -------------------------------------------------------------------
 
 ### 4a. Analyze Single Sentence Sentiment (RoBERTa)
 POST http://localhost:8003/analyze-sentiment
