@@ -27,9 +27,11 @@ app.add_middleware(
 class MessagePayload(BaseModel):
     text: str
     speaker: Optional[str] = "caller"
+    previous_score: Optional[float] = 0.0
 
 PHRASE_SERVICE_URL = "http://localhost:8002/extract-keywords"
 SENTIMENT_SERVICE_URL = "http://localhost:8003/analyze-sentiment"
+SCORE_SERVICE_URL = "http://localhost:8004/calculate-score"
 
 http_client: httpx.AsyncClient = None
 
@@ -53,8 +55,18 @@ async def process_message(payload: MessagePayload):
         
         text = payload.text.strip()
         speaker = payload.speaker if payload.speaker in ["agent", "caller"] else "caller"
+        previous_score = payload.previous_score if payload.previous_score is not None else 0.0
+
         if not text:
-            return {"status": "success", "detected_issues": [], "processing_time_ms": 0}
+            return {
+                "status": "success",
+                "processing_time_ms": 0,
+                "score_details": {
+                    "score": previous_score,
+                    "escalation_triggered": previous_score >= 65.0
+                },
+                "detected_issues": []
+            }
 
         detected_keywords = []
         try:
@@ -77,12 +89,38 @@ async def process_message(payload: MessagePayload):
         except Exception as e:
             print(f"Warning: Sentiment analysis service error: {e}")
 
+        # Calculate live dampened EMA score using service-score
+        score_details = {
+            "emotion": emotion,
+            "confidence": confidence,
+            "emotion_weight": 0.0,
+            "previous_score": previous_score,
+            "dampening_factor": 1.0,
+            "dampened_raw_score": 0.0,
+            "score": previous_score,
+            "escalation_triggered": previous_score >= 65.0
+        }
+        try:
+            score_res = await client.post(
+                SCORE_SERVICE_URL,
+                json={
+                    "emotion": emotion,
+                    "confidence": confidence,
+                    "previous_score": previous_score
+                }
+            )
+            if score_res.status_code == 200:
+                score_details = score_res.json()
+        except Exception as e:
+            print(f"Warning: Score calculation service error: {e}")
+
         end_time = time.perf_counter()
         processing_time_ms = round((end_time - start_time) * 1000, 2)
 
         return {
             "status": "success",
             "processing_time_ms": processing_time_ms,
+            "score_details": score_details,
             "detected_issues": [{
                 "isolated_sentence": text,
                 "speaker": speaker,
@@ -90,8 +128,11 @@ async def process_message(payload: MessagePayload):
                 "detected_keywords": detected_keywords,
                 "emotion": emotion,
                 "sentiment_category": sentiment_category,
-                "confidence": confidence
+                "confidence": confidence,
+                "live_score": score_details.get("score", previous_score),
+                "escalation_triggered": score_details.get("escalation_triggered", False)
             }]
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Gateway Error: {str(e)}")
+

@@ -19,6 +19,17 @@ Content-Type: application/json
 
 
 
+### 1c. Process Message with Previous Score (Gateway)
+POST http://localhost:8000/api/v1/process-message
+Content-Type: application/json
+
+{
+  "text": "I am extremely angry and furious about this issue!",
+  "speaker": "caller",
+  "previous_score": 42.0
+}
+
+
 ### Extract & Detect Admin Keywords
 POST http://localhost:8002/extract-keywords
 Content-Type: application/json
@@ -54,3 +65,26 @@ Content-Type: application/json
     }
   ]
 }
+
+
+
+### 5a. Calculate Score (Standard Chunk - Below 40)
+POST http://localhost:8004/calculate-score
+Content-Type: application/json
+
+{
+  "emotion": "anger",
+  "confidence": 0.80,
+  "previous_score": 0.0
+}
+
+### 5b. Calculate Score (Dampened Chunk - Above 40)
+POST http://localhost:8004/calculate-score
+Content-Type: application/json
+
+{
+  "emotion": "anger",
+  "confidence": 0.80,
+  "previous_score": 42.0
+}
+

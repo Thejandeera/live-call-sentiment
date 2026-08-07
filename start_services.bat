@@ -12,6 +12,10 @@ start "Phrase Service" cmd /k "call venv\Scripts\activate && cd service-phrase &
 REM Start Sentiment Analysis Service (Port 8003)
 start "Sentiment Service" cmd /k "call venv\Scripts\activate && cd service-sentiment && uvicorn main:app --port 8003"
 
-echo All 3 microservices are launching in separate windows!
+REM Start Sentiment Score Calculation Service (Port 8004)
+start "Sentiment Score Service" cmd /k "call venv\Scripts\activate && cd service-score && uvicorn main:app --port 8004"
+
+echo All 4 microservices are launching in separate windows!
 echo You can close this window now.
 pause
+
