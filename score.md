@@ -1,6 +1,6 @@
 # Live Sentiment Score Calculation Logic & Microservice Specification (`score.md`)
 
-This document provides a comprehensive technical specification of the live sentiment scoring algorithm implemented in `service-score/main.py`. It explains the mathematical formulas, non-linear dampening logic, contextual emotion severity hierarchy, escalation threshold detection, and provides detailed worked calculation examples.
+This document provides a comprehensive technical specification of the live sentiment scoring algorithm implemented in `service-score/main.py`. It explains the mathematical formulas, dampening logic, directional awareness, contextual emotion severity hierarchy, escalation threshold detection, and detailed worked calculation examples.
 
 ---
 
@@ -9,10 +9,14 @@ This document provides a comprehensive technical specification of the live senti
 The **Live Sentiment Score Service** (`service-score`) calculates a real-time Exponential Moving Average (EMA) score $S \in [-100.0, +100.0]$ that tracks the overall emotional trajectory of a live call session.
 
 ### Key Architectural Concepts:
-1. **Exponential Moving Average (EMA)**: Smooths out rapid fluctuations by giving high weight to historical state while dynamically absorbing new emotional signals ($\alpha = 0.15$).
+1. **Exponential Moving Average (EMA)**: Smooths out rapid fluctuations by maintaining historical state while dynamically absorbing new emotional signals ($\alpha = 0.3$).
 2. **Contextual Emotion Severity Hierarchy**: Maps fine-grained emotions detected by RoBERTa to predefined severity weights ranging from $+100.0$ (gratitude) down to $-100.0$ (anger).
-3. **Non-Linear Asymptotic Dampening**: When the session score magnitude $|S_{\text{current}}|$ exceeds a resistance threshold ($40.0$), a dynamic dampening multiplier reduces the impact of consecutive extreme sentiment spikes to prevent rapid saturation.
-4. **Escalation Threshold Breach**: Triggers a manager intervention signal when the live score breaches critical negative territory ($S_{\text{new}} \le -65.0$).
+3. **Alpha Dampening (Fixing the Math Flaw)**: Dampening is applied to the smoothing factor $\alpha$ ($\alpha_{\text{effective}} = \alpha \times \text{dampening\_factor}$) rather than changing the target raw weight ($W_{\text{raw}}$). This slows down how fast the score moves without mathematical distortion at extreme scores.
+4. **Directional Awareness (Fast Recovery)**: Dampening only applies when sentiment is compounding in the same direction. If a negative score caller expresses positive sentiment (e.g. gratitude), dampening is bypassed (`dampening_factor = 1.0`) so the agent's de-escalation recovers the score rapidly at full speed.
+5. **Tiered Resistance (Two Thresholds)**:
+   - **Tier 1 (50.0)**: If $|S_{\text{current}}| \ge 50.0$ and compounding in the same direction, speed is cut by half (`dampening_factor = 0.5`).
+   - **Tier 2 (80.0)**: If $|S_{\text{current}}| \ge 80.0$ and compounding in the same direction, speed is cut drastically (`dampening_factor = 0.2`) to prevent saturation near absolute limits.
+6. **Escalation Threshold Breach**: Triggers a manager intervention signal when the live score breaches critical negative territory ($S_{\text{new}} \le -65.0$).
 
 ---
 
@@ -24,9 +28,9 @@ The **Live Sentiment Score Service** (`service-score`) calculates a real-time Ex
 
 ```json
 {
-  "emotion": "anger",
+  "emotion": "disgust",
   "confidence": 0.85,
-  "previous_score": -35.0
+  "previous_score": -70.0
 }
 ```
 
@@ -42,14 +46,14 @@ The **Live Sentiment Score Service** (`service-score`) calculates a real-time Ex
 
 ```json
 {
-  "emotion": "anger",
+  "emotion": "disgust",
   "confidence": 0.85,
-  "emotion_weight": -100.0,
-  "previous_score": -35.0,
-  "dampening_factor": 1.0,
-  "dampened_raw_score": -100.0,
-  "score": -44.75,
-  "escalation_triggered": false
+  "emotion_weight": -95.0,
+  "previous_score": -70.0,
+  "dampening_factor": 0.5,
+  "dampened_raw_score": -47.5,
+  "score": -73.75,
+  "escalation_triggered": true
 }
 ```
 
@@ -59,8 +63,8 @@ The **Live Sentiment Score Service** (`service-score`) calculates a real-time Ex
 | `confidence` | `float` | Echoed confidence score. |
 | `emotion_weight` | `float` | Predefined contextual severity weight ($W_{\text{raw}}$) for the emotion. |
 | `previous_score` | `float` | Input score bounded to $[-100.0, +100.0]$ and rounded to 2 decimal places. |
-| `dampening_factor` | `float` | Calculated asymptotic dampening multiplier $D \in (0.0, 1.0]$. |
-| `dampened_raw_score` | `float` | Effective raw score after dampening ($S_{\text{dampened}} = W_{\text{raw}} \times D$). |
+| `dampening_factor` | `float` | Calculated dampening factor ($0.2$, $0.5$, or $1.0$). |
+| `dampened_raw_score` | `float` | Contextual reference calculated as $W_{\text{raw}} \times \text{dampening\_factor}$. |
 | `score` | `float` | The newly updated EMA live score ($S_{\text{new}}$). |
 | `escalation_triggered` | `boolean` | `true` if $S_{\text{new}} \le -65.0$, otherwise `false`. |
 
@@ -107,15 +111,19 @@ The score computation follows a strict 6-step pipeline:
 flowchart TD
     A["Input Payload (emotion, previous_score)"] --> B["Step 1: Bound Input Score S_current in [-100.0, +100.0]"]
     B --> C["Step 2: Lookup Raw Emotion Weight W_raw"]
-    C --> D{"Step 3: Check Resistance Threshold |S_current| > 40.0?"}
-    D -- Yes --> E["Calculate Dampening: D = 1.0 - (|S_current| / 100.0)"]
-    D -- No --> F["No Dampening: D = 1.0"]
-    E --> G["Step 4: Compute Dampened Score: S_dampened = W_raw * D"]
-    F --> G
-    G --> H["Step 5: Calculate EMA: S_new = (0.15 * S_dampened) + (0.85 * S_current)"]
-    H --> I{"Step 6: Escalation Breach Check: S_new <= -65.0?"}
-    I -- True --> J["escalation_triggered = True"]
-    I -- False --> K["escalation_triggered = False"]
+    C --> D{"Step 3: Heading in Same Direction? (S_current & W_raw both > 0 or both < 0)"}
+    D -- No (De-escalation / Fast Recovery) --> E["dampening_factor = 1.0"]
+    D -- Yes --> F{"Check Absolute Score |S_current|"}
+    F -- "|S_current| >= 80.0 (Tier 2)" --> G["dampening_factor = 0.2"]
+    F -- "|S_current| >= 50.0 (Tier 1)" --> H["dampening_factor = 0.5"]
+    F -- "|S_current| < 50.0" --> E
+    E --> I["Step 4: Calculate Effective Alpha: alpha_effective = ALPHA * dampening_factor"]
+    G --> I
+    H --> I
+    I --> J["Step 5: Compute EMA: S_new = (alpha_effective * W_raw) + ((1.0 - alpha_effective) * S_current)"]
+    J --> K{"Step 6: Escalation Breach Check: S_new <= -65.0?"}
+    K -- True --> L["escalation_triggered = True"]
+    K -- False --> M["escalation_triggered = False"]
 ```
 
 ### Step 1: Input Score Bounding
@@ -125,18 +133,22 @@ $$S_{\text{current}} = \max\left(-100.0, \min\left(100.0, S_{\text{previous}}\ri
 ### Step 2: Contextual Emotion Weight Lookup
 $$W_{\text{raw}} = \text{EMOTION\_WEIGHTS}.\text{get}(\text{emotion.lower}(), 0.0)$$
 
-### Step 3: Asymptotic Dampening Factor ($D$)
-When the magnitude $|S_{\text{current}}|$ exceeds the resistance threshold $\text{RESISTANCE\_THRESHOLD} = 40.0$, non-linear dampening is activated:
+### Step 3: Directional Check & Tiered Resistance Dampening ($D$)
+Check if the current score and new emotion are compounding in the same direction:
+$$\text{same\_direction} = (S_{\text{current}} > 0 \land W_{\text{raw}} > 0) \lor (S_{\text{current}} < 0 \land W_{\text{raw}} < 0)$$
 
-$$D = \begin{cases} 1.0 - \frac{|S_{\text{current}}|}{100.0}, & \text{if } |S_{\text{current}}| > 40.0 \\[6pt] 1.0, & \text{if } |S_{\text{current}}| \le 40.0 \end{cases}$$
+Determine the dampening factor $D$:
+$$D = \begin{cases} 
+0.2, & \text{if } \text{same\_direction} \text{ and } |S_{\text{current}}| \ge 80.0 \text{ (Tier 2 Resistance)} \\
+0.5, & \text{if } \text{same\_direction} \text{ and } |S_{\text{current}}| \ge 50.0 \text{ (Tier 1 Resistance)} \\
+1.0, & \text{otherwise (Fast Recovery / Below Tier 1)}
+\end{cases}$$
 
-### Step 4: Dampened Raw Score ($S_{\text{dampened}}$)
-$$S_{\text{dampened}} = W_{\text{raw}} \times D$$
+### Step 4: Effective Alpha Calculation
+$$\alpha_{\text{effective}} = \alpha \times D \quad (\text{where base } \alpha = 0.3)$$
 
 ### Step 5: Exponential Moving Average (EMA) Update
-With smoothing parameter $\alpha = 0.15$:
-
-$$S_{\text{new}} = (\alpha \times S_{\text{dampened}}) + ((1.0 - \alpha) \times S_{\text{current}})$$
+$$S_{\text{new}} = (\alpha_{\text{effective}} \times W_{\text{raw}}) + ((1.0 - \alpha_{\text{effective}}) \times S_{\text{current}})$$
 
 $$S_{\text{new}} = \max\left(-100.0, \min\left(100.0, \operatorname{round}(S_{\text{new}}, 2)\right)\right)$$
 
@@ -147,67 +159,64 @@ $$\text{escalation\_triggered} = (S_{\text{new}} \le -65.0)$$
 
 ## 5. Worked Calculation Examples
 
-### Example 1: Call Start (Initial Neutral State)
-- **Input**:
-  - `emotion`: `"anger"` ($W_{\text{raw}} = -100.0$)
-  - `previous_score`: `0.0`
-- **Calculation Steps**:
-  1. $S_{\text{current}} = 0.0$
-  2. $W_{\text{raw}} = -100.0$
-  3. $|S_{\text{current}}| = 0.0 \le 40.0 \longrightarrow D = 1.0$
-  4. $S_{\text{dampened}} = -100.0 \times 1.0 = -100.0$
-  5. $S_{\text{new}} = (0.15 \times -100.0) + (0.85 \times 0.0) = -15.0$
-  6. $-15.0 \le -65.0 \longrightarrow \text{escalation\_triggered} = \text{false}$
-- **Response Score**: `-15.0`
+Assuming base $\alpha = 0.3$:
 
----
-
-### Example 2: Consecutive Hostility (Non-Linear Dampening Active)
+### Example 1: Hitting Tier 1 Resistance (Slowing Down)
+- **State**: The caller is already angry and utters another negative sentiment.
 - **Input**:
+  - $S_{\text{current}} = -70.0$
   - `emotion`: `"disgust"` ($W_{\text{raw}} = -95.0$)
-  - `previous_score`: `-50.0`
+- **Logic**: Directions match (both negative) and $|S_{\text{current}}| = 70.0 \ge 50.0$ (Tier 1 threshold).
 - **Calculation Steps**:
-  1. $S_{\text{current}} = -50.0$
-  2. $W_{\text{raw}} = -95.0$
-  3. $|S_{\text{current}}| = 50.0 > 40.0 \longrightarrow D = 1.0 - \frac{50.0}{100.0} = 0.50$
-  4. $S_{\text{dampened}} = -95.0 \times 0.50 = -47.50$
-  5. $S_{\text{new}} = (0.15 \times -47.50) + (0.85 \times -50.0) = -7.125 + (-42.5) = -49.625 \approx -49.63$
-  6. $-49.63 > -65.0 \longrightarrow \text{escalation\_triggered} = \text{false}$
-- **Response Score**: `-49.63` ($D = 0.50$)
+  1. $\text{dampening\_factor} = 0.5$
+  2. $\alpha_{\text{effective}} = 0.3 \times 0.5 = 0.15$
+  3. $S_{\text{new}} = (0.15 \times -95.0) + (0.85 \times -70.0) = -14.25 + (-59.50) = -73.75$
+  4. $-73.75 \le -65.0 \longrightarrow \text{escalation\_triggered} = \text{true}$
+- **Result**: `-73.75` (The score moves from -70 to -73.75, preventing premature over-escalation).
 
 ---
 
-### Example 3: Critical Escalation Threshold Breach
+### Example 2: Fast Recovery (De-escalation)
+- **State**: The caller is very angry, but the agent offers a solution and the caller expresses gratitude.
 - **Input**:
-  - `emotion`: `"anger"` ($W_{\text{raw}} = -100.0$)
-  - `previous_score`: `-62.0`
-- **Calculation Steps**:
-  1. $S_{\text{current}} = -62.0$
-  2. $W_{\text{raw}} = -100.0$
-  3. $|S_{\text{current}}| = 62.0 > 40.0 \longrightarrow D = 1.0 - \frac{62.0}{100.0} = 0.38$
-  4. $S_{\text{dampened}} = -100.0 \times 0.38 = -38.0$
-  5. $S_{\text{new}} = (0.15 \times -38.0) + (0.85 \times -62.0) = -5.7 + (-52.7) = -58.40$
-- **Response Score**: `-58.40`
-
-*If another severe negative message arrives with $S_{\text{current}} = -64.0$ and `emotion`: `"disgust"` ($W_{\text{raw}} = -95.0$)*:
-  1. $D = 1.0 - 0.64 = 0.36$
-  2. $S_{\text{dampened}} = -95.0 \times 0.36 = -34.20$
-  3. $S_{\text{new}} = (0.15 \times -34.20) + (0.85 \times -65.0) = -5.13 + (-55.25) = -60.38$
-
----
-
-### Example 4: Positive Recovery
-- **Input**:
+  - $S_{\text{current}} = -70.0$
   - `emotion`: `"gratitude"` ($W_{\text{raw}} = +100.0$)
-  - `previous_score`: `-30.0`
+- **Logic**: Directions are opposite (Current is negative, New is positive). Dampening is bypassed!
 - **Calculation Steps**:
-  1. $S_{\text{current}} = -30.0$
-  2. $W_{\text{raw}} = +100.0$
-  3. $|S_{\text{current}}| = 30.0 \le 40.0 \longrightarrow D = 1.0$
-  4. $S_{\text{dampened}} = +100.0 \times 1.0 = +100.0$
-  5. $S_{\text{new}} = (0.15 \times 100.0) + (0.85 \times -30.0) = 15.0 - 25.5 = -10.50$
-  6. $-10.50 > -65.0 \longrightarrow \text{escalation\_triggered} = \text{false}$
-- **Response Score**: `-10.50` (Score recovered upwards by +19.5 points in a single sentence).
+  1. $\text{dampening\_factor} = 1.0$ (Full speed)
+  2. $\alpha_{\text{effective}} = 0.3 \times 1.0 = 0.30$
+  3. $S_{\text{new}} = (0.30 \times 100.0) + (0.70 \times -70.0) = 30.0 - 49.0 = -19.00$
+  4. $-19.00 > -65.0 \longrightarrow \text{escalation\_triggered} = \text{false}$
+- **Result**: `-19.00` (The score rapidly recovers from -70.0 all the way to -19.00, reflecting immediate de-escalation).
+
+---
+
+### Example 3: Hitting Tier 2 Resistance (Extreme Friction)
+- **State**: Caller is extremely hostile over a sustained duration.
+- **Input**:
+  - $S_{\text{current}} = -85.0$
+  - `emotion`: `"anger"` ($W_{\text{raw}} = -100.0$)
+- **Logic**: Directions match and $|S_{\text{current}}| = 85.0 \ge 80.0$ (Tier 2 threshold).
+- **Calculation Steps**:
+  1. $\text{dampening\_factor} = 0.2$ (80% speed reduction)
+  2. $\alpha_{\text{effective}} = 0.3 \times 0.2 = 0.06$
+  3. $S_{\text{new}} = (0.06 \times -100.0) + (0.94 \times -85.0) = -6.00 + (-79.90) = -85.90$
+  4. $-85.90 \le -65.0 \longrightarrow \text{escalation\_triggered} = \text{true}$
+- **Result**: `-85.90` (The score barely moves from -85.0 to -85.90, preventing absolute floor saturation).
+
+---
+
+### Example 4: Initial Segment / Standard Speed Below Tier 1
+- **State**: Starting session from zero state.
+- **Input**:
+  - $S_{\text{current}} = 0.0$
+  - `emotion`: `"anger"` ($W_{\text{raw}} = -100.0$)
+- **Logic**: $|S_{\text{current}}| = 0.0 < 50.0 \longrightarrow \text{dampening\_factor} = 1.0$.
+- **Calculation Steps**:
+  1. $\alpha_{\text{effective}} = 0.3 \times 1.0 = 0.30$
+  2. $S_{\text{new}} = (0.30 \times -100.0) + (0.70 \times 0.0) = -30.00$
+  3. $-30.00 > -65.0 \longrightarrow \text{escalation\_triggered} = \text{false}$
+- **Result**: `-30.00`
 
 ---
 
@@ -228,6 +237,6 @@ curl -X POST "http://localhost:8004/calculate-score" \
      -d '{
            "emotion": "gratitude",
            "confidence": 0.95,
-           "previous_score": 12.5
+           "previous_score": -70.0
          }'
 ```
