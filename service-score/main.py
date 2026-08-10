@@ -4,11 +4,7 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="Live Sentiment Score Service (EMA with Non-Linear Dampening)")
 
-# Contextual Severity Emotion Weights:
-# Good (Positive) Emotions: (+) Weights from +5.0 to +100.0
-# Bad (Negative) Emotions: (-) Weights from -15.0 to -100.0
 EMOTION_WEIGHTS = {
-    # Good (Positive) Emotions Hierarchy (+)
     "gratitude": 100.0,
     "relief": 95.0,
     "approval": 85.0,
@@ -23,8 +19,6 @@ EMOTION_WEIGHTS = {
     "pride": 15.0,
     "love": 10.0,
     "desire": 5.0,
-
-    # Bad (Negative) Emotions Hierarchy (-)
     "anger": -100.0,
     "disgust": -95.0,
     "grief": -90.0,
@@ -38,14 +32,13 @@ EMOTION_WEIGHTS = {
     "embarrassment": -35.0,
     "confusion": -25.0,
     "realization": -15.0,
-
-    # Neutral Emotion
     "neutral": 0.0,
 }
 
-ALPHA = 0.15  # Smoothing factor for Exponential Moving Average
-RESISTANCE_THRESHOLD = 40.0  # Resistance threshold magnitude for non-linear dampening
-ESCALATION_THRESHOLD = -65.0  # Critical threshold breach for manager intervention (negative scale)
+ALPHA = 0.3
+RESISTANCE_THRESHOLD_1 = 50.0
+RESISTANCE_THRESHOLD_2 = 80.0
+ESCALATION_THRESHOLD = -65.0
 
 
 class ScoreRequest(BaseModel):
@@ -71,29 +64,31 @@ async def calculate_score(payload: ScoreRequest):
     confidence = payload.confidence if payload.confidence is not None else 0.0
     s_current = payload.previous_score if payload.previous_score is not None else 0.0
 
-    # Ensure s_current stays within valid signed bounds [-100.0, +100.0]
     s_current = max(-100.0, min(100.0, float(s_current)))
 
-    # Get predefined contextual severity weight from hierarchy (+ for positive, - for negative)
     raw_weight = EMOTION_WEIGHTS.get(emotion_clean, 0.0)
 
-    # Calculate asymptotic dampening factor D based on magnitude |S_current|
+    same_direction = (s_current > 0 and raw_weight > 0) or (s_current < 0 and raw_weight < 0)
     abs_score = abs(s_current)
-    if abs_score > RESISTANCE_THRESHOLD:
-        dampening_factor = 1.0 - (abs_score / 100.0)
+
+    if same_direction:
+        if abs_score >= RESISTANCE_THRESHOLD_2:
+            dampening_factor = 0.2
+        elif abs_score >= RESISTANCE_THRESHOLD_1:
+            dampening_factor = 0.5
+        else:
+            dampening_factor = 1.0
     else:
         dampening_factor = 1.0
 
-    # Apply dampening multiplier to incoming emotion raw weight
-    dampened_raw_score = raw_weight * dampening_factor
+    effective_alpha = ALPHA * dampening_factor
 
-    # Exponential Moving Average (EMA) update calculation
-    # S_new = (alpha * S_effective_raw) + ((1 - alpha) * S_current)
-    s_new = (ALPHA * dampened_raw_score) + ((1.0 - ALPHA) * s_current)
+    s_new = (effective_alpha * raw_weight) + ((1.0 - effective_alpha) * s_current)
     s_new = max(-100.0, min(100.0, round(s_new, 2)))
 
-    # Check if negative escalation threshold (-65.0) is breached
     escalation_triggered = s_new <= ESCALATION_THRESHOLD
+
+    dampened_raw_score = raw_weight * dampening_factor
 
     return ScoreResponse(
         emotion=payload.emotion,
@@ -105,4 +100,3 @@ async def calculate_score(payload: ScoreRequest):
         score=s_new,
         escalation_triggered=escalation_triggered,
     )
-

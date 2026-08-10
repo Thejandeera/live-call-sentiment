@@ -21,6 +21,17 @@ interface DetectedKeyword {
   sentiment: string;
 }
 
+interface ScoreDetails {
+  emotion: string;
+  confidence: number;
+  emotion_weight: number;
+  previous_score: number;
+  dampening_factor: number;
+  dampened_raw_score: number;
+  score: number;
+  escalation_triggered: boolean;
+}
+
 interface ChatMessage {
   id: string;
   speaker: "agent" | "caller";
@@ -94,6 +105,10 @@ export default function LiveMonitor() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [liveScore, setLiveScore] = useState<number>(0);
+  const [previousScore, setPreviousScore] = useState<number>(0);
+  const [scoreDetails, setScoreDetails] = useState<ScoreDetails | null>(null);
+
   const [activeRole, setActiveRole] = useState<"agent" | "caller">("caller");
   const [inputText, setInputText] = useState<string>("");
 
@@ -107,6 +122,18 @@ export default function LiveMonitor() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
+        const savedLiveScore = sessionStorage.getItem("live_sentiment_score");
+        if (savedLiveScore !== null) {
+          const parsed = parseFloat(savedLiveScore);
+          if (!isNaN(parsed)) setLiveScore(parsed);
+        }
+
+        const savedPrevScore = sessionStorage.getItem("previous_sentiment_score");
+        if (savedPrevScore !== null) {
+          const parsed = parseFloat(savedPrevScore);
+          if (!isNaN(parsed)) setPreviousScore(parsed);
+        }
+
         const savedAll = sessionStorage.getItem("all_chat_messages");
         if (savedAll) {
           const parsedAll = JSON.parse(savedAll);
@@ -124,6 +151,23 @@ export default function LiveMonitor() {
       } catch (e) {
         console.error("Failed to load conversation history from sessionStorage:", e);
       }
+    }
+  }, []);
+
+  const handleResetCall = useCallback(() => {
+    setMessages([]);
+    setRecentMessages([]);
+    setTranscript("");
+    setLiveScore(0);
+    setPreviousScore(0);
+    setScoreDetails(null);
+    setProcessingTimeMs(null);
+    setError(null);
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("all_chat_messages");
+      sessionStorage.removeItem("last_6_chat_messages");
+      sessionStorage.removeItem("live_sentiment_score");
+      sessionStorage.removeItem("previous_sentiment_score");
     }
   }, []);
 
@@ -185,12 +229,39 @@ export default function LiveMonitor() {
       const res = await fetch("http://localhost:8000/api/v1/process-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: textToSend, speaker: activeRole }),
+        body: JSON.stringify({
+          text: textToSend,
+          speaker: activeRole,
+          previous_score: liveScore
+        }),
       });
       const data = await res.json();
       if (data.status === "success") {
         addGatewayIssuesToMessages(data.detected_issues || []);
         setProcessingTimeMs(data.processing_time_ms || 0);
+
+        if (data.score_details) {
+          const details: ScoreDetails = data.score_details;
+          const newScore = typeof details.score === "number" ? details.score : liveScore;
+          const prevScore = typeof details.previous_score === "number" ? details.previous_score : liveScore;
+
+          setPreviousScore(prevScore);
+          setLiveScore(newScore);
+          setScoreDetails(details);
+
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("previous_sentiment_score", prevScore.toString());
+            sessionStorage.setItem("live_sentiment_score", newScore.toString());
+          }
+
+          if (details.escalation_triggered) {
+            setToastMessage({
+              title: "CRITICAL ESCALATION TRIGGERED",
+              body: `Live sentiment score dropped to ${newScore.toFixed(1)} (Threshold breached: <= -65.0)!`,
+            });
+            setTimeout(() => setToastMessage(null), 6000);
+          }
+        }
       } else {
         setError(data.detail || "Error processing message");
       }
@@ -199,17 +270,11 @@ export default function LiveMonitor() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText, isLoading, activeRole, addGatewayIssuesToMessages]);
-
-  const realOverallScore = useMemo(() => {
-    if (recentMessages.length === 0) return 0;
-    const totalSum = recentMessages.reduce((acc, m) => acc + m.sentence_score, 0);
-    return Math.round(totalSum / recentMessages.length);
-  }, [recentMessages]);
+  }, [inputText, isLoading, activeRole, liveScore, addGatewayIssuesToMessages]);
 
   const pointerLeftPercent = useMemo(() => {
-    return Math.min(95, Math.max(5, ((realOverallScore + 100) / 200) * 100));
-  }, [realOverallScore]);
+    return Math.min(95, Math.max(5, ((liveScore + 100) / 200) * 100));
+  }, [liveScore]);
 
   const realKeywords = useMemo(() => {
     const realKeywordMap = new Map<string, { count: number; sentiment: string }>();
@@ -264,6 +329,27 @@ export default function LiveMonitor() {
             <h1 className="live-title">Live Call Sentiment</h1>
           </div>
         </div>
+        <button
+          onClick={handleResetCall}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.4rem',
+            padding: '0.45rem 0.8rem',
+            borderRadius: '8px',
+            border: '1px solid #cbd5e1',
+            backgroundColor: '#ffffff',
+            color: '#475569',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            cursor: 'pointer',
+            transition: 'all 0.15s'
+          }}
+          title="Reset Call & Clear Scores"
+        >
+          <ArrowsClockwise size={16} />
+          <span>Reset Session</span>
+        </button>
       </header>
 
       <main className="live-main-container">
@@ -507,32 +593,54 @@ export default function LiveMonitor() {
             style={{ transform: `scale(${cardScale})`, transformOrigin: "top center", transition: 'transform 0.15s', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
           >
             <div className="scalable-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-              <h2 className="card-title-sm" style={{ marginBottom: '1.25rem', textAlign: 'center', width: '100%' }}>
-                Rolling Sentiment Score (Last {recentMessages.length > 0 ? recentMessages.length : 6} Sentences)
-              </h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: '1rem' }}>
+                <h2 className="card-title-sm" style={{ margin: 0 }}>
+                  Live Sentiment Score (EMA)
+                </h2>
+                {scoreDetails?.escalation_triggered && (
+                  <span className="badge-pill badge-pill-neg" style={{ fontSize: '0.65rem', animation: 'pulse 1.5s infinite' }}>
+                    ESCALATION TRIGGERED
+                  </span>
+                )}
+              </div>
 
               <div style={{ width: '100%', position: 'relative', padding: '0 0.5rem', marginBottom: '0.75rem' }}>
                 <div className="gauge-gradient-track"></div>
                 <div
                   className="gauge-pointer"
-                  style={{ left: `${pointerLeftPercent}%`, borderColor: realOverallScore < 0 ? '#dc2626' : realOverallScore > 0 ? '#10b981' : '#64748b' }}
+                  style={{ left: `${pointerLeftPercent}%`, borderColor: liveScore < 0 ? '#dc2626' : liveScore > 0 ? '#10b981' : '#64748b' }}
                 ></div>
               </div>
 
               <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', marginBottom: '0.75rem' }}>
-                <span>High Neg</span>
-                <span>Neutral</span>
-                <span>High Pos</span>
+                <span>-100 (Severe Neg)</span>
+                <span>0 (Neutral)</span>
+                <span>+100 (High Pos)</span>
               </div>
 
-              <div className="big-score-display" style={{ color: realOverallScore < 0 ? '#dc2626' : realOverallScore > 0 ? '#059669' : '#475569' }}>
-                {realOverallScore > 0 ? `+${realOverallScore}%` : `${realOverallScore}%`}
+              <div className="big-score-display" style={{ color: liveScore < 0 ? '#dc2626' : liveScore > 0 ? '#059669' : '#475569' }}>
+                {liveScore > 0 ? `+${liveScore.toFixed(1)}` : liveScore.toFixed(1)}
               </div>
-              <p style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', fontWeight: 500, margin: 0, maxWidth: '220px' }}>
-                {recentMessages.length > 0
-                  ? `Rolling average over last ${recentMessages.length} sentence(s) (max 6)`
+              <p style={{ fontSize: '0.72rem', color: '#64748b', textAlign: 'center', fontWeight: 500, margin: '0 0 0.75rem 0', maxWidth: '240px' }}>
+                {messages.length > 0
+                  ? "Real-time non-linearly dampened EMA score"
                   : "Waiting for chat input to calculate score"}
               </p>
+
+              <div style={{ width: '100%', borderTop: '1px solid #f1f5f9', paddingTop: '0.65rem', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.5rem' }}>
+                <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.4rem 0.5rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Previous Score</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: previousScore < 0 ? '#dc2626' : previousScore > 0 ? '#059669' : '#334155', marginTop: '0.1rem' }}>
+                    {previousScore > 0 ? `+${previousScore.toFixed(1)}` : previousScore.toFixed(1)}
+                  </div>
+                </div>
+                <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.4rem 0.5rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Dampening Factor</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#334155', marginTop: '0.1rem' }}>
+                    {scoreDetails ? scoreDetails.dampening_factor.toFixed(2) : "1.00"}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div className="scalable-card">
