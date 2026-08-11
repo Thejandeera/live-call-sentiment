@@ -61,10 +61,6 @@ async def process_message(payload: MessagePayload):
             return {
                 "status": "success",
                 "processing_time_ms": 0,
-                "score_details": {
-                    "score": previous_score,
-                    "escalation_triggered": previous_score >= 65.0
-                },
                 "detected_issues": []
             }
 
@@ -120,11 +116,8 @@ async def process_message(payload: MessagePayload):
         return {
             "status": "success",
             "processing_time_ms": processing_time_ms,
-            "score_details": score_details,
             "detected_issues": [{
                 "isolated_sentence": text,
-                "speaker": speaker,
-                "phrase": detected_keywords[0]["keyword"] if detected_keywords else "N/A",
                 "detected_keywords": detected_keywords,
                 "emotion": emotion,
                 "sentiment_category": sentiment_category,

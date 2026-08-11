@@ -178,13 +178,13 @@ export default function LiveMonitor() {
       const cat = item.sentiment_category || "neutral";
       const conf = item.confidence || 0.0;
       const score = computeSentenceScore(cat, conf);
-      const kws = item.detected_keywords || (item.phrase && item.phrase !== "N/A" ? [{ keyword: item.phrase, sentiment: cat }] : []);
+      const kws = item.detected_keywords || [];
 
       return {
         id: `msg-${Date.now()}-${idx}`,
-        speaker: (item.speaker === "agent" ? "agent" : "caller") as "agent" | "caller",
+        speaker: activeRole,
         isolated_sentence: item.isolated_sentence || "",
-        phrase: item.phrase || (kws.length > 0 ? kws[0].keyword : "N/A"),
+        phrase: kws.length > 0 ? kws[0].keyword : "N/A",
         detected_keywords: kws,
         emotion: item.emotion || "neutral",
         sentiment_category: cat,
@@ -216,7 +216,7 @@ export default function LiveMonitor() {
       const addedText = formattedMessages.map((m) => m.isolated_sentence).join(" ");
       setTranscript((prev) => (prev ? `${prev} ${addedText}` : addedText));
     }
-  }, []);
+  }, [activeRole]);
 
   const handleSendTextMessage = useCallback(async () => {
     if (!inputText.trim() || isLoading) return;
@@ -240,21 +240,20 @@ export default function LiveMonitor() {
         addGatewayIssuesToMessages(data.detected_issues || []);
         setProcessingTimeMs(data.processing_time_ms || 0);
 
-        if (data.score_details) {
-          const details: ScoreDetails = data.score_details;
-          const newScore = typeof details.score === "number" ? details.score : liveScore;
-          const prevScore = typeof details.previous_score === "number" ? details.previous_score : liveScore;
+        if (data.detected_issues && data.detected_issues.length > 0) {
+          const issue = data.detected_issues[0];
+          const newScore = typeof issue.live_score === "number" ? issue.live_score : liveScore;
+          const prevScore = liveScore;
 
           setPreviousScore(prevScore);
           setLiveScore(newScore);
-          setScoreDetails(details);
 
           if (typeof window !== "undefined") {
             sessionStorage.setItem("previous_sentiment_score", prevScore.toString());
             sessionStorage.setItem("live_sentiment_score", newScore.toString());
           }
 
-          if (details.escalation_triggered) {
+          if (issue.escalation_triggered) {
             setToastMessage({
               title: "CRITICAL ESCALATION TRIGGERED",
               body: `Live sentiment score dropped to ${newScore.toFixed(1)} (Threshold breached: <= -65.0)!`,

@@ -92,8 +92,7 @@ where:
 {
   "matches": [
     {
-      "keyword": "cancel account",
-      "sentiment": "negative"
+      "keyword": "cancel account"
     }
   ]
 }
@@ -133,17 +132,16 @@ where:
   "detected_issues": [
     {
       "isolated_sentence": "I want to cancel my account immediately.",
-      "speaker": "caller",
-      "phrase": "cancel account",
       "detected_keywords": [
         {
-          "keyword": "cancel account",
-          "sentiment": "negative"
+          "keyword": "cancel account"
         }
       ],
       "emotion": "annoyance",
       "sentiment_category": "negative",
-      "confidence": 0.8742
+      "confidence": 0.8742,
+      "live_score": -87.42,
+      "escalation_triggered": true
     }
   ]
 }
