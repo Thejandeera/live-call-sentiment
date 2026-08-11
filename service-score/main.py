@@ -77,9 +77,9 @@ async def calculate_score(payload: ScoreRequest):
         elif abs_score >= RESISTANCE_THRESHOLD_1:
             dampening_factor = 0.5
         else:
-            dampening_factor = 1.0
+            dampening_factor = 0.6
     else:
-        dampening_factor = 1.0
+        dampening_factor = 0.6
 
     effective_alpha = ALPHA * dampening_factor
 
