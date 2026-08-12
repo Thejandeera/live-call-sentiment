@@ -119,11 +119,8 @@ async def process_message(payload: MessagePayload):
             "detected_issues": [{
                 "isolated_sentence": text,
                 "detected_keywords": detected_keywords,
-                "emotion": emotion,
                 "sentiment_category": sentiment_category,
-                "confidence": confidence,
-                "live_score": score_details.get("score", previous_score),
-                "escalation_triggered": score_details.get("escalation_triggered", False)
+                "live_score": score_details.get("score", previous_score)
             }]
         }
     except Exception as e:
