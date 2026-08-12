@@ -60,10 +60,8 @@ async def extract_keywords(payload: TextPayload):
         kw_text = matched_span.text.lower()
         
         if kw_text not in seen:
-            sentiment = keyword_db.get(kw_text, "neutral")
             detected_keywords.append({
-                "keyword": matched_span.text,
-                "sentiment": sentiment
+                "keyword": matched_span.text
             })
             seen.add(kw_text)
             
