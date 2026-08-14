@@ -1,5 +1,5 @@
 ### 1a. Process Direct Text Message
-POST http://localhost:8000/api/v1/process-message
+POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json
 
 {
@@ -7,7 +7,7 @@ Content-Type: application/json
 }
 
 ### 1b. Process Direct Text Message (Agent Response)
-POST http://localhost:8000/api/v1/process-message
+POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json
 
 {
@@ -16,7 +16,7 @@ Content-Type: application/json
 }
 
 ### 1c. Process Message with Previous Score
-POST http://localhost:8000/api/v1/process-message
+POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json
 
 {
@@ -26,7 +26,7 @@ Content-Type: application/json
 }
 
 ### 1d. Process Message with Custom Negative Thresholds
-POST http://localhost:8000/api/v1/process-message
+POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json
 
 {

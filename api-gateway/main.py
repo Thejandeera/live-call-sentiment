@@ -50,7 +50,6 @@ async def shutdown_event():
     if http_client:
         await http_client.aclose()
 
-@app.post("/api/v1/process-message")
 @app.post("/api/v1/process-text")
 async def process_message(payload: MessagePayload):
     try:
