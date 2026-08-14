@@ -1,15 +1,13 @@
-
-
-### 1a. Process Direct Text Message (Agent or Caller)
-POST http://localhost:8000/api/v1/process-message
+### 1a. Process Direct Text Message
+POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json
 
 {
-  "text": "I am extremely never good refund unhappy and I want to cancel my account immediately."
+  "text": "I am extremely unhappy and I want to cancel my account immediately."
 }
 
 ### 1b. Process Direct Text Message (Agent Response)
-POST http://localhost:8000/api/v1/process-message
+POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json
 
 {
@@ -17,20 +15,31 @@ Content-Type: application/json
   "speaker": "agent"
 }
 
-
-
-### 1c. Process Message with Previous Score (Gateway)
-POST http://localhost:8000/api/v1/process-message
+### 1c. Process Message with Previous Score
+POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json
 
 {
   "text": "I am extremely angry and furious about this issue!",
   "speaker": "caller",
-  "previous_score": 42.0
+  "previous_score": -60.0
 }
 
+### 1d. Process Message with Custom Negative Thresholds
+POST http://localhost:8000/api/v1/process-text
+Content-Type: application/json
 
-### Extract & Detect Admin Keywords
+{
+  "text": "I am extremely angry and furious about this issue!",
+  "speaker": "caller",
+  "previous_score": -60.0,
+  "negative_threshold_1": 40.0,
+  "negative_threshold_1_dampening_factor": 0.4,
+  "negative_threshold_2": 75.0,
+  "negative_threshold_2_dampening_factor": 0.15
+}
+
+### 2. Extract & Detect Admin Keywords
 POST http://localhost:8002/extract-keywords
 Content-Type: application/json
 
@@ -38,9 +47,7 @@ Content-Type: application/json
   "text": "I want to cancel my account because of terrible service."
 }
 
-
-
-### 4a. Analyze Single Sentence Sentiment (RoBERTa)
+### 3a. Analyze Single Sentence Sentiment
 POST http://localhost:8003/analyze-sentiment
 Content-Type: application/json
 
@@ -48,7 +55,7 @@ Content-Type: application/json
   "text": "Thank you so much for your quick and wonderful support!"
 }
 
-### 4b. Analyze Batch Sentences Sentiment (RoBERTa Vectorized Batch)
+### 3b. Analyze Batch Sentences Sentiment
 POST http://localhost:8003/analyze-sentiment-batch
 Content-Type: application/json
 
@@ -66,25 +73,36 @@ Content-Type: application/json
   ]
 }
 
-
-
-### 5a. Calculate Score (Standard Chunk - Below 40)
+### 4a. Calculate Score (Standard Defaults)
 POST http://localhost:8004/calculate-score
 Content-Type: application/json
 
 {
   "emotion": "anger",
   "confidence": 0.80,
-  "previous_score": 0.0
+  "previous_score": -55.0
 }
 
-### 5b. Calculate Score (Dampened Chunk - Above 40)
+### 4b. Calculate Score (Custom Negative Thresholds)
 POST http://localhost:8004/calculate-score
 Content-Type: application/json
 
 {
   "emotion": "anger",
   "confidence": 0.80,
-  "previous_score": 42.0
+  "previous_score": -55.0,
+  "negative_threshold_1": 40.0,
+  "negative_threshold_1_dampening_factor": 0.4,
+  "negative_threshold_2": 75.0,
+  "negative_threshold_2_dampening_factor": 0.15
 }
 
+### 4c. Calculate Score (Positive Dampening Threshold at 80.0)
+POST http://localhost:8004/calculate-score
+Content-Type: application/json
+
+{
+  "emotion": "gratitude",
+  "confidence": 0.95,
+  "previous_score": 85.0
+}

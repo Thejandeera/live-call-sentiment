@@ -28,6 +28,10 @@ class MessagePayload(BaseModel):
     text: str
     speaker: Optional[str] = "caller"
     previous_score: Optional[float] = 0.0
+    negative_threshold_1: Optional[float] = None
+    negative_threshold_1_dampening_factor: Optional[float] = None
+    negative_threshold_2: Optional[float] = None
+    negative_threshold_2_dampening_factor: Optional[float] = None
 
 PHRASE_SERVICE_URL = "http://localhost:8002/extract-keywords"
 SENTIMENT_SERVICE_URL = "http://localhost:8003/analyze-sentiment"
@@ -46,7 +50,6 @@ async def shutdown_event():
     if http_client:
         await http_client.aclose()
 
-@app.post("/api/v1/process-message")
 @app.post("/api/v1/process-text")
 async def process_message(payload: MessagePayload):
     try:
@@ -85,7 +88,6 @@ async def process_message(payload: MessagePayload):
         except Exception as e:
             print(f"Warning: Sentiment analysis service error: {e}")
 
-        # Calculate live dampened EMA score using service-score
         score_details = {
             "emotion": emotion,
             "confidence": confidence,
@@ -94,16 +96,27 @@ async def process_message(payload: MessagePayload):
             "dampening_factor": 1.0,
             "dampened_raw_score": 0.0,
             "score": previous_score,
-            "escalation_triggered": previous_score >= 65.0
+            "escalation_triggered": previous_score <= -65.0
         }
+
+        score_req_payload = {
+            "emotion": emotion,
+            "confidence": confidence,
+            "previous_score": previous_score
+        }
+        if payload.negative_threshold_1 is not None:
+            score_req_payload["negative_threshold_1"] = payload.negative_threshold_1
+        if payload.negative_threshold_1_dampening_factor is not None:
+            score_req_payload["negative_threshold_1_dampening_factor"] = payload.negative_threshold_1_dampening_factor
+        if payload.negative_threshold_2 is not None:
+            score_req_payload["negative_threshold_2"] = payload.negative_threshold_2
+        if payload.negative_threshold_2_dampening_factor is not None:
+            score_req_payload["negative_threshold_2_dampening_factor"] = payload.negative_threshold_2_dampening_factor
+
         try:
             score_res = await client.post(
                 SCORE_SERVICE_URL,
-                json={
-                    "emotion": emotion,
-                    "confidence": confidence,
-                    "previous_score": previous_score
-                }
+                json=score_req_payload
             )
             if score_res.status_code == 200:
                 score_details = score_res.json()
@@ -119,10 +132,10 @@ async def process_message(payload: MessagePayload):
             "detected_issues": [{
                 "isolated_sentence": text,
                 "detected_keywords": detected_keywords,
+                "emotion": emotion,
                 "sentiment_category": sentiment_category,
                 "live_score": score_details.get("score", previous_score)
             }]
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Gateway Error: {str(e)}")
-

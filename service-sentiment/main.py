@@ -21,12 +21,12 @@ roberta_model = None
 
 def categorize_emotion(emotion: str, score: float) -> str:
     positive_emotions = {
-        "admiration", "amusement", "approval", "caring", "desire",
+        "admiration", "amusement", "approval", "caring", "curiosity", "desire",
         "excitement", "gratitude", "joy", "love", "optimism", "pride", "relief"
     }
     negative_emotions = {
-        "anger", "annoyance", "disappointment", "disapproval", "disgust",
-        "embarrassment", "fear", "grief", "nervousness", "remorse", "sadness"
+        "anger", "annoyance", "confusion", "disappointment", "disapproval", "disgust",
+        "embarrassment", "fear", "grief", "nervousness", "realization", "remorse", "sadness"
     }
     if emotion in positive_emotions:
         return "positive" if score >= 0.50 else "neutral"
@@ -38,13 +38,18 @@ def categorize_emotion(emotion: str, score: float) -> str:
 @app.on_event("startup")
 def load_model():
     global roberta_model
-    print("[Sentiment Service] Loading RoBERTa emotion classification model...")
-    roberta_model = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions")
-    print("[Sentiment Service] RoBERTa model ready.")
+    if roberta_model is None:
+        print("[Sentiment Service] Loading RoBERTa emotion classification model...")
+        roberta_model = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions")
+        print("[Sentiment Service] RoBERTa model ready.")
 
 @app.post("/analyze-sentiment")
 async def analyze_sentiment(payload: TextPayload):
-    sentence = payload.isolated_sentence if payload.isolated_sentence else payload.text
+    global roberta_model
+    if roberta_model is None:
+        load_model()
+
+    sentence = payload.isolated_sentence if payload.isolated_sentence is not None and payload.isolated_sentence.strip() else payload.text
     if not sentence or not sentence.strip():
         return {"emotion": "neutral", "sentiment_category": "neutral", "confidence": 0.0}
         
@@ -63,11 +68,15 @@ async def analyze_sentiment(payload: TextPayload):
 
 @app.post("/analyze-sentiment-batch")
 async def analyze_sentiment_batch(payload: BatchPayload):
+    global roberta_model
+    if roberta_model is None:
+        load_model()
+
     if not payload.items:
         return {"results": []}
 
     sentences = [
-        (item.isolated_sentence if item.isolated_sentence else item.text or "").strip()
+        (item.isolated_sentence if item.isolated_sentence is not None and item.isolated_sentence.strip() else item.text or "").strip()
         for item in payload.items
     ]
     
