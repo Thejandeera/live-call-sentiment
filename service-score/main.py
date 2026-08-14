@@ -2,7 +2,7 @@ from typing import Optional
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="Live Sentiment Score Service (EMA with Non-Linear Dampening)")
+app = FastAPI(title="Live Sentiment Score Service")
 
 EMOTION_WEIGHTS = {
     "gratitude": 100.0,
@@ -36,15 +36,23 @@ EMOTION_WEIGHTS = {
 }
 
 ALPHA = 0.3
-RESISTANCE_THRESHOLD_1 = 50.0
-RESISTANCE_THRESHOLD_2 = 80.0
+DEFAULT_POS_THRESHOLD = 80.0
+DEFAULT_POS_DAMPENING_FACTOR = 0.5
+DEFAULT_NEG_THRESHOLD_1 = 50.0
+DEFAULT_NEG_DAMPENING_FACTOR_1 = 0.5
+DEFAULT_NEG_THRESHOLD_2 = 80.0
+DEFAULT_NEG_DAMPENING_FACTOR_2 = 0.2
 ESCALATION_THRESHOLD = -65.0
 
 
 class ScoreRequest(BaseModel):
     emotion: str
     confidence: Optional[float] = 0.0
-    previous_score: Optional[float] = Field(default=0.0, description="Previous live score (S_current). Defaults to 0.0 if not provided.")
+    previous_score: Optional[float] = 0.0
+    negative_threshold_1: Optional[float] = None
+    negative_threshold_1_dampening_factor: Optional[float] = None
+    negative_threshold_2: Optional[float] = None
+    negative_threshold_2_dampening_factor: Optional[float] = None
 
 
 class ScoreResponse(BaseModel):
@@ -68,18 +76,28 @@ async def calculate_score(payload: ScoreRequest):
 
     raw_weight = EMOTION_WEIGHTS.get(emotion_clean, 0.0)
 
-    same_direction = (s_current > 0 and raw_weight > 0) or (s_current < 0 and raw_weight < 0)
-    abs_score = abs(s_current)
+    neg_thresh_1 = payload.negative_threshold_1 if payload.negative_threshold_1 is not None else DEFAULT_NEG_THRESHOLD_1
+    neg_damp_1 = payload.negative_threshold_1_dampening_factor if payload.negative_threshold_1_dampening_factor is not None else DEFAULT_NEG_DAMPENING_FACTOR_1
+    neg_thresh_2 = payload.negative_threshold_2 if payload.negative_threshold_2 is not None else DEFAULT_NEG_THRESHOLD_2
+    neg_damp_2 = payload.negative_threshold_2_dampening_factor if payload.negative_threshold_2_dampening_factor is not None else DEFAULT_NEG_DAMPENING_FACTOR_2
 
-    if same_direction:
-        if abs_score >= RESISTANCE_THRESHOLD_2:
-            dampening_factor = 0.2
-        elif abs_score >= RESISTANCE_THRESHOLD_1:
-            dampening_factor = 0.5
+    dampening_factor = 1.0
+
+    if s_current > 0 and raw_weight > 0:
+        if s_current >= DEFAULT_POS_THRESHOLD:
+            dampening_factor = DEFAULT_POS_DAMPENING_FACTOR
         else:
-            dampening_factor = 0.6
+            dampening_factor = 1.0
+    elif s_current < 0 and raw_weight < 0:
+        abs_score = abs(s_current)
+        if abs_score >= neg_thresh_2:
+            dampening_factor = neg_damp_2
+        elif abs_score >= neg_thresh_1:
+            dampening_factor = neg_damp_1
+        else:
+            dampening_factor = 1.0
     else:
-        dampening_factor = 0.6
+        dampening_factor = 1.0
 
     effective_alpha = ALPHA * dampening_factor
 
