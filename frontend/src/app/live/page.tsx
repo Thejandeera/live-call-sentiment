@@ -25,10 +25,16 @@ interface ScoreDetails {
   emotion: string;
   confidence: number;
   emotion_weight: number;
+  effective_emotion_weight?: number;
   previous_score: number;
   dampening_factor: number;
   dampened_raw_score: number;
   score: number;
+  call_health_score?: number;
+  sentiment_trend?: string;
+  peak_negativity?: number;
+  turn_count?: number;
+  session_avg_score?: number;
   escalation_triggered: boolean;
 }
 
@@ -232,7 +238,11 @@ export default function LiveMonitor() {
         body: JSON.stringify({
           text: textToSend,
           speaker: activeRole,
-          previous_score: liveScore
+          previous_score: liveScore,
+          turn_count: messages.length + 1,
+          session_avg_score: scoreDetails?.session_avg_score ?? liveScore,
+          peak_negativity: scoreDetails?.peak_negativity ?? liveScore,
+          recent_scores: messages.slice(-5).map((m) => m.sentence_score),
         }),
       });
       const data = await res.json();
@@ -242,11 +252,15 @@ export default function LiveMonitor() {
 
         if (data.detected_issues && data.detected_issues.length > 0) {
           const issue = data.detected_issues[0];
-          const newScore = typeof issue.live_score === "number" ? issue.live_score : liveScore;
+          const newScore = typeof issue.final_score === "number" ? issue.final_score : (typeof issue.live_score === "number" ? issue.live_score : (typeof issue.score === "number" ? issue.score : liveScore));
           const prevScore = liveScore;
 
           setPreviousScore(prevScore);
           setLiveScore(newScore);
+
+          if (issue.score_details) {
+            setScoreDetails(issue.score_details);
+          }
 
           if (typeof window !== "undefined") {
             sessionStorage.setItem("previous_sentiment_score", prevScore.toString());
@@ -269,7 +283,7 @@ export default function LiveMonitor() {
     } finally {
       setIsLoading(false);
     }
-  }, [inputText, isLoading, activeRole, liveScore, addGatewayIssuesToMessages]);
+  }, [inputText, isLoading, activeRole, liveScore, messages, scoreDetails, addGatewayIssuesToMessages]);
 
   const pointerLeftPercent = useMemo(() => {
     return Math.min(95, Math.max(5, ((liveScore + 100) / 200) * 100));
@@ -639,6 +653,36 @@ export default function LiveMonitor() {
                     {scoreDetails ? scoreDetails.dampening_factor.toFixed(2) : "1.00"}
                   </div>
                 </div>
+                <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '0.4rem 0.5rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.6rem', color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>Call Health Score</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: (scoreDetails?.call_health_score ?? liveScore) < 0 ? '#dc2626' : '#059669', marginTop: '0.1rem' }}>
+                    {scoreDetails?.call_health_score !== undefined
+                      ? (scoreDetails.call_health_score > 0 ? `+${scoreDetails.call_health_score.toFixed(1)}` : scoreDetails.call_health_score.toFixed(1))
+                      : (liveScore > 0 ? `+${liveScore.toFixed(1)}` : liveScore.toFixed(1))}
+                  </div>
+                </div>
+                <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '0.4rem 0.5rem', textAlign: 'center' }}>
+                  <div style={{ fontSize: '0.6rem', color: '#991b1b', fontWeight: 700, textTransform: 'uppercase' }}>Peak Negativity</div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 800, color: '#b91c1c', marginTop: '0.1rem' }}>
+                    {scoreDetails?.peak_negativity !== undefined
+                      ? (scoreDetails.peak_negativity > 0 ? `+${scoreDetails.peak_negativity.toFixed(1)}` : scoreDetails.peak_negativity.toFixed(1))
+                      : (liveScore > 0 ? `+${liveScore.toFixed(1)}` : liveScore.toFixed(1))}
+                  </div>
+                </div>
+              </div>
+              <div style={{ width: '100%', marginTop: '0.5rem', padding: '0.35rem 0.6rem', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Sentiment Trajectory:</span>
+                <span style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 800,
+                  color: scoreDetails?.sentiment_trend === 'Strong Recovery'
+                    ? '#047857'
+                    : scoreDetails?.sentiment_trend === 'Escalating'
+                    ? '#b91c1c'
+                    : '#334155'
+                }}>
+                  {scoreDetails?.sentiment_trend || 'Stable'}
+                </span>
               </div>
             </div>
 

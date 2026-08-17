@@ -1,22 +1,24 @@
-# Live Sentiment Score Calculation Logic & Microservice Specification (`score.md`)
+# Standardized Dual-Horizon Live Sentiment Score Specification (`score.md`)
 
-This document provides a comprehensive technical specification of the live sentiment scoring algorithm implemented in `service-score/main.py`. It explains the mathematical formulas, dampening logic, directional awareness, contextual emotion severity hierarchy, escalation threshold detection, and detailed worked calculation examples.
+This document provides a comprehensive technical specification of the standardized live sentiment scoring engine implemented in `service-score/main.py`. It explains the mathematical formulas, confidence weighting, neutral inertia attenuation, continuous logistic saturation functions, dual-horizon long-call metrics, and detailed worked calculation examples.
 
 ---
 
 ## 1. Overview & Purpose
 
-The **Live Sentiment Score Service** (`service-score`) calculates a real-time Exponential Moving Average (EMA) score $S \in [-100.0, +100.0]$ that tracks the overall emotional trajectory of a live call session.
+The **Live Sentiment Score Service** (`service-score`) calculates a real-time Confidence-Weighted Dual-Horizon Sentiment Score $S \in [-100.0, +100.0]$ that tracks the emotional trajectory of live call sessions.
 
 ### Key Architectural Concepts:
-1. **Exponential Moving Average (EMA)**: Smooths out rapid fluctuations by maintaining historical state while dynamically absorbing new emotional signals ($\alpha = 0.3$).
-2. **Contextual Emotion Severity Hierarchy**: Maps fine-grained emotions detected by RoBERTa to predefined severity weights ranging from $+100.0$ (gratitude) down to $-100.0$ (anger).
-3. **Alpha Dampening (Fixing the Math Flaw)**: Dampening is applied to the smoothing factor $\alpha$ ($\alpha_{\text{effective}} = \alpha \times \text{dampening\_factor}$) rather than changing the target raw weight ($W_{\text{raw}}$). This slows down how fast the score moves without mathematical distortion at extreme scores.
-4. **Directional Awareness (Fast Recovery)**: Dampening only applies when sentiment is compounding in the same direction. If a negative score caller expresses positive sentiment (e.g. gratitude), dampening is bypassed (`dampening_factor = 1.0`) so the agent's de-escalation recovers the score rapidly at full speed.
-5. **Tiered Resistance (Two Thresholds)**:
-   - **Tier 1 (50.0)**: If $|S_{\text{current}}| \ge 50.0$ and compounding in the same direction, speed is cut by half (`dampening_factor = 0.5`).
-   - **Tier 2 (80.0)**: If $|S_{\text{current}}| \ge 80.0$ and compounding in the same direction, speed is cut drastically (`dampening_factor = 0.2`) to prevent saturation near absolute limits.
-6. **Escalation Threshold Breach**: Triggers a manager intervention signal when the live score breaches critical negative territory ($S_{\text{new}} \le -65.0$).
+1. **Confidence-Weighted Emotion Signal ($W_{\text{effective}}$)**: Scales the raw emotion severity weight by model confidence ($W_{\text{effective}} = W_{\text{raw}} \times \text{confidence}$), preventing low-confidence predictions from polluting the score.
+2. **Neutral Inertia Attenuation ($\alpha_{\text{neutral}} = 0.04$)**: Eliminates the "Neutral Volatility Collapse" bug. Neutral statements cause a gentle, natural decay without resetting severe scores to zero.
+3. **Continuous Logistic Saturation Resistance ($D(S)$)**: Replaces abrupt hardcoded thresholds with a smooth continuous friction function $D(S) = \frac{1}{1 + (|S| / 75)^2}$.
+4. **Directional Awareness (Fast Recovery)**: Bypasses dampening ($D = 1.0$) when caller sentiment moves in the opposite direction (de-escalation), enabling rapid score recovery upon agent resolution.
+5. **Dual-Horizon Session Metrics**:
+   - **`live_score` ($S_{\text{live}}$)**: Instantaneous turn-by-turn EMA state.
+   - **`call_health_score` ($S_{\text{health}}$)**: Cumulative session health score ($70\%$ session average + $30\%$ live score), preserving long-call history even if the call ends calmly.
+   - **`sentiment_trend`**: Rate of score change over recent turns (`"Strong Recovery"`, `"De-escalating"`, `"Escalating"`, `"Stable"`).
+   - **`peak_negativity`**: Lowest score reached during the session.
+6. **Escalation Threshold Breach**: Triggers intervention when either $S_{\text{live}} \le -65.0$ or $S_{\text{health}} \le -65.0$.
 
 ---
 
@@ -30,15 +32,23 @@ The **Live Sentiment Score Service** (`service-score`) calculates a real-time Ex
 {
   "emotion": "disgust",
   "confidence": 0.85,
-  "previous_score": -70.0
+  "previous_score": -70.0,
+  "turn_count": 5,
+  "session_avg_score": -65.0,
+  "peak_negativity": -75.0,
+  "speaker": "caller"
 }
 ```
 
 | Field | Type | Required | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `emotion` | `string` | Yes | `""` | The primary emotion string detected (e.g., `"anger"`, `"gratitude"`). |
-| `confidence` | `float` | No | `0.0` | RoBERTa confidence score ($0.0 \le C \le 1.0$). |
-| `previous_score` | `float` | No | `0.0` | The current session score ($S_{\text{current}}$) prior to processing this segment. |
+| `confidence` | `float` | No | `1.0` | RoBERTa confidence score ($0.0 \le C \le 1.0$). |
+| `previous_score` | `float` | No | `0.0` | Session score ($S_{\text{current}}$) prior to processing this segment. |
+| `turn_count` | `int` | No | `1` | Cumulative number of utterances processed in the current session. |
+| `session_avg_score` | `float` | No | `previous_score` | Running average of all session scores. |
+| `peak_negativity` | `float` | No | `previous_score` | Lowest score reached in the session so far. |
+| `speaker` | `string` | No | `"caller"` | Speaker role (`"caller"` or `"agent"`). |
 
 ---
 
@@ -49,10 +59,16 @@ The **Live Sentiment Score Service** (`service-score`) calculates a real-time Ex
   "emotion": "disgust",
   "confidence": 0.85,
   "emotion_weight": -95.0,
+  "effective_emotion_weight": -80.75,
   "previous_score": -70.0,
-  "dampening_factor": 0.5,
-  "dampened_raw_score": -47.5,
-  "score": -73.75,
+  "dampening_factor": 0.5346,
+  "dampened_raw_score": -43.17,
+  "score": -72.68,
+  "call_health_score": -68.85,
+  "sentiment_trend": "Escalating",
+  "peak_negativity": -72.68,
+  "turn_count": 5,
+  "session_avg_score": -66.54,
   "escalation_triggered": true
 }
 ```
@@ -61,12 +77,16 @@ The **Live Sentiment Score Service** (`service-score`) calculates a real-time Ex
 | :--- | :--- | :--- |
 | `emotion` | `string` | Echoed raw emotion input string. |
 | `confidence` | `float` | Echoed confidence score. |
-| `emotion_weight` | `float` | Predefined contextual severity weight ($W_{\text{raw}}$) for the emotion. |
-| `previous_score` | `float` | Input score bounded to $[-100.0, +100.0]$ and rounded to 2 decimal places. |
-| `dampening_factor` | `float` | Calculated dampening factor ($0.2$, $0.5$, or $1.0$). |
-| `dampened_raw_score` | `float` | Contextual reference calculated as $W_{\text{raw}} \times \text{dampening\_factor}$. |
-| `score` | `float` | The newly updated EMA live score ($S_{\text{new}}$). |
-| `escalation_triggered` | `boolean` | `true` if $S_{\text{new}} \le -65.0$, otherwise `false`. |
+| `emotion_weight` | `float` | Contextual severity weight ($W_{\text{raw}}$). |
+| `effective_emotion_weight` | `float` | Confidence-scaled weight ($W_{\text{effective}} = W_{\text{raw}} \times \text{confidence}$). |
+| `previous_score` | `float` | Bounded input score ($S_{\text{current}}$). |
+| `dampening_factor` | `float` | Calculated dampening factor ($D(S)$). |
+| `score` | `float` | Live instantaneous score ($S_{\text{live}}$). |
+| `call_health_score` | `float` | Dual-horizon session health score ($S_{\text{health}}$). |
+| `sentiment_trend` | `string` | Trajectory direction (`"Strong Recovery"`, `"Escalating"`, `"Stable"`). |
+| `peak_negativity` | `float` | Lowest score reached during the session. |
+| `escalation_triggered` | `boolean` | `true` if $S_{\text{live}} \le -65.0$ or $S_{\text{health}} \le -65.0$. |
+
 
 ---
 
