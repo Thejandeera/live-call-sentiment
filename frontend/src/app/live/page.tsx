@@ -2,7 +2,8 @@
 
 import React, { useState, useMemo, useCallback, useEffect, KeyboardEvent, useRef } from "react";
 import "./live.css";
-import catastrophicCallerScenario from "@/data/catastrophic_caller_scenario.json";
+import negativeScenario from "@/data/negative.json";
+import positiveScenario from "@/data/positive.json";
 import {
   Broadcast,
   MagnifyingGlass,
@@ -80,8 +81,30 @@ interface ScenarioChunk {
   expectedMood: string;
 }
 
-// 50 Caller-Only Extreme Escalation Chunks (Loaded from JSON file)
-const CATASTROPHIC_CALLER_SCENARIO: ScenarioChunk[] = catastrophicCallerScenario as ScenarioChunk[];
+export interface ScenarioDataset {
+  id: string;
+  name: string;
+  filename: string;
+  badgeColor: string;
+  data: ScenarioChunk[];
+}
+
+export const SCENARIO_DATASETS: Record<string, ScenarioDataset> = {
+  negative: {
+    id: "negative",
+    name: "Catastrophic Escalation Test",
+    filename: "negative.json",
+    badgeColor: "#dc2626",
+    data: negativeScenario as ScenarioChunk[],
+  },
+  positive: {
+    id: "positive",
+    name: "High Resolution & Praise Test",
+    filename: "positive.json",
+    badgeColor: "#059669",
+    data: positiveScenario as ScenarioChunk[],
+  },
+};
 
 const EMOTION_WEIGHT_MAP: Record<string, number> = {
   gratitude: 100.0,
@@ -452,7 +475,12 @@ export default function LiveMonitor() {
   const [inputText, setInputText] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Script Scenario Pipeline state
+  // Dataset Selection state
+  const [selectedDatasetKey, setSelectedDatasetKey] = useState<string>("negative");
+  const activeDataset = SCENARIO_DATASETS[selectedDatasetKey] || SCENARIO_DATASETS.negative;
+  const activeScenario = activeDataset.data;
+
+  // Script Scenario Pipeline index state
   const [scenarioIndex, setScenarioIndex] = useState<number>(0);
   const [showScenarioDrawer, setShowScenarioDrawer] = useState<boolean>(false);
 
@@ -490,6 +518,11 @@ export default function LiveMonitor() {
         if (savedDetails) {
           setScoreDetails(JSON.parse(savedDetails));
         }
+
+        const savedDataset = sessionStorage.getItem("selected_dataset_key");
+        if (savedDataset && SCENARIO_DATASETS[savedDataset]) {
+          setSelectedDatasetKey(savedDataset);
+        }
       } catch (e) {
         console.error("Failed to load conversation history from sessionStorage:", e);
       }
@@ -516,6 +549,15 @@ export default function LiveMonitor() {
       sessionStorage.removeItem("live_sentiment_score");
       sessionStorage.removeItem("previous_sentiment_score");
       sessionStorage.removeItem("latest_score_details");
+    }
+  }, []);
+
+  const handleDatasetChange = useCallback((newKey: string) => {
+    setIsAutoRunning(false);
+    setSelectedDatasetKey(newKey);
+    setScenarioIndex(0);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("selected_dataset_key", newKey);
     }
   }, []);
 
@@ -635,9 +677,9 @@ export default function LiveMonitor() {
     let timer: NodeJS.Timeout;
 
     if (isAutoRunning && !isLoading) {
-      if (scenarioIndex < CATASTROPHIC_CALLER_SCENARIO.length) {
+      if (scenarioIndex < activeScenario.length) {
         timer = setTimeout(() => {
-          const chunk = CATASTROPHIC_CALLER_SCENARIO[scenarioIndex];
+          const chunk = activeScenario[scenarioIndex];
           setScenarioIndex((prev) => prev + 1);
           sendCallerUtterance(chunk.text).then((success) => {
             if (!success) {
@@ -653,18 +695,18 @@ export default function LiveMonitor() {
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [isAutoRunning, isLoading, scenarioIndex, autoDelay, sendCallerUtterance]);
+  }, [isAutoRunning, isLoading, scenarioIndex, autoDelay, activeScenario, sendCallerUtterance]);
 
   const toggleAutoRun = useCallback(() => {
     if (isAutoRunning) {
       setIsAutoRunning(false);
     } else {
-      if (scenarioIndex >= CATASTROPHIC_CALLER_SCENARIO.length) {
+      if (scenarioIndex >= activeScenario.length) {
         setScenarioIndex(0);
       }
       setIsAutoRunning(true);
     }
-  }, [isAutoRunning, scenarioIndex]);
+  }, [isAutoRunning, scenarioIndex, activeScenario.length]);
 
   const handleSendTextMessage = useCallback(() => {
     if (!inputText.trim()) return;
@@ -673,13 +715,13 @@ export default function LiveMonitor() {
     sendCallerUtterance(text);
   }, [inputText, sendCallerUtterance]);
 
-  // Execute next chunk from test scenario manually (one by one)
+  // Execute next chunk from active test scenario manually (one by one)
   const handleSendNextScenarioChunk = useCallback(() => {
-    if (scenarioIndex >= CATASTROPHIC_CALLER_SCENARIO.length) return;
-    const chunk = CATASTROPHIC_CALLER_SCENARIO[scenarioIndex];
+    if (scenarioIndex >= activeScenario.length) return;
+    const chunk = activeScenario[scenarioIndex];
     sendCallerUtterance(chunk.text);
     setScenarioIndex((prev) => prev + 1);
-  }, [scenarioIndex, sendCallerUtterance]);
+  }, [activeScenario, scenarioIndex, sendCallerUtterance]);
 
   // Execute any specific chunk directly from the list drawer
   const handleSendSpecificChunk = useCallback(
@@ -760,22 +802,41 @@ export default function LiveMonitor() {
           </div>
         </div>
 
-        {/* Center: Caller Scenario Pipeline Launcher */}
+        {/* Center: Dynamic Scenario Dataset Pipeline Launcher */}
         <div className="scenario-pipeline-bar">
+          {/* Dataset JSON File Selector Dropdown */}
+          <select
+            value={selectedDatasetKey}
+            onChange={(e) => handleDatasetChange(e.target.value)}
+            className="scenario-select"
+            title="Select Scenario Dataset JSON File"
+          >
+            {Object.entries(SCENARIO_DATASETS).map(([key, dataset]) => (
+              <option key={key} value={key}>
+                📄 {dataset.filename} — {dataset.name}
+              </option>
+            ))}
+          </select>
+
           <div className="scenario-info-tag">
-            <Flame size={16} weight="fill" color="#dc2626" />
-            <span className="scenario-name">50-Turn Caller Escalation Test</span>
+            <Flame size={16} weight="fill" color={activeDataset.badgeColor} />
+            <span className="scenario-name">{activeDataset.name}</span>
             <span className="scenario-progress-pill">
-              Chunk {Math.min(scenarioIndex + 1, 50)} / 50
+              Chunk {Math.min(scenarioIndex + 1, activeScenario.length)} / {activeScenario.length}
             </span>
           </div>
 
           {/* Manual Send Next Button (Send one by one manually) */}
           <button
             onClick={handleSendNextScenarioChunk}
-            disabled={isLoading || isAutoRunning || scenarioIndex >= CATASTROPHIC_CALLER_SCENARIO.length}
+            disabled={isLoading || isAutoRunning || scenarioIndex >= activeScenario.length}
             className="scenario-next-btn"
-            title="Send next single caller utterance manually to the backend"
+            title={`Send next single caller utterance from ${activeDataset.filename} manually`}
+            style={
+              activeDataset.id === "positive"
+                ? { background: "linear-gradient(135deg, #059669 0%, #047857 100%)", boxShadow: "0 1px 2px rgba(5, 150, 105, 0.2)" }
+                : undefined
+            }
           >
             {isLoading && !isAutoRunning ? (
               <Spinner size={14} className="animate-spin" />
@@ -783,9 +844,9 @@ export default function LiveMonitor() {
               <Play size={14} weight="fill" />
             )}
             <span>
-              {scenarioIndex >= CATASTROPHIC_CALLER_SCENARIO.length
+              {scenarioIndex >= activeScenario.length
                 ? "Scenario Finished"
-                : `Inject Caller Turn #${scenarioIndex + 1}`}
+                : `Inject Turn #${scenarioIndex + 1}`}
             </span>
           </button>
 
@@ -794,7 +855,7 @@ export default function LiveMonitor() {
             onClick={toggleAutoRun}
             disabled={isLoading && !isAutoRunning}
             className={`scenario-auto-btn ${isAutoRunning ? "running" : ""}`}
-            title="Automatically send each JSON turn one by one as backend responses arrive"
+            title={`Automatically send each turn from ${activeDataset.filename} one by one`}
           >
             {isAutoRunning ? (
               <>
@@ -804,7 +865,7 @@ export default function LiveMonitor() {
             ) : (
               <>
                 <FastForward size={14} weight="fill" />
-                <span>Auto-Run All 50</span>
+                <span>Auto-Run All {activeScenario.length}</span>
               </>
             )}
           </button>
@@ -827,10 +888,10 @@ export default function LiveMonitor() {
           <button
             onClick={() => setShowScenarioDrawer(!showScenarioDrawer)}
             className={`scenario-list-toggle ${showScenarioDrawer ? "active" : ""}`}
-            title="Open/Close Full 50-Turn Interactive Script List"
+            title="Open/Close Interactive Script List"
           >
             <ListNumbers size={16} weight="bold" />
-            <span>Caller Chunks ({CATASTROPHIC_CALLER_SCENARIO.length})</span>
+            <span>Chunks ({activeScenario.length})</span>
           </button>
         </div>
 
@@ -881,11 +942,11 @@ export default function LiveMonitor() {
             {messages.length === 0 && !isLoading && (
               <div className="empty-chat-state">
                 <div className="empty-chat-icon">
-                  <Flame size={28} color="#f97316" />
+                  <Flame size={28} color={activeDataset.badgeColor} />
                 </div>
-                <h3 className="empty-chat-title">Ready for Caller Escalation Test</h3>
+                <h3 className="empty-chat-title">Ready for {activeDataset.name}</h3>
                 <p className="empty-chat-desc">
-                  Click <strong>&ldquo;Inject Caller Turn #1&rdquo;</strong> to send manually one by one, or click <strong>&ldquo;Auto-Run All 50&rdquo;</strong> to automatically send each turn as responses arrive.
+                  Dataset: <strong>{activeDataset.filename}</strong> &bull; Click <strong>&ldquo;Inject Turn #1&rdquo;</strong> to send manually, or <strong>&ldquo;Auto-Run All 50&rdquo;</strong> to auto-play.
                 </p>
               </div>
             )}
@@ -1160,7 +1221,7 @@ export default function LiveMonitor() {
               <div>
                 <h2 className="chart-card-title">Caller Sentiment Trajectory</h2>
                 <p className="chart-card-subtitle">
-                  Historical progression of caller sentiment scores across turns (Targeting &le; -80.0)
+                  Historical progression for {activeDataset.filename} across turns
                 </p>
               </div>
               <div className="chart-legend">
@@ -1192,10 +1253,10 @@ export default function LiveMonitor() {
               <div className="scenario-drawer-header">
                 <div>
                   <h3 className="scenario-drawer-title">
-                    50-Chunk Caller Escalation Script
+                    {activeDataset.name} ({activeDataset.filename})
                   </h3>
                   <p className="scenario-drawer-sub">
-                    Click any caller chunk below to inject it directly into the pipeline back-to-back
+                    Click any caller chunk below to inject it directly into the live sentiment pipeline
                   </p>
                 </div>
                 <button
@@ -1207,7 +1268,7 @@ export default function LiveMonitor() {
               </div>
 
               <div className="scenario-chunks-grid">
-                {CATASTROPHIC_CALLER_SCENARIO.map((chunk, idx) => {
+                {activeScenario.map((chunk, idx) => {
                   const isSent = idx < scenarioIndex;
                   const isNext = idx === scenarioIndex;
                   return (
