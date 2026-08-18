@@ -2,8 +2,12 @@
 
 import React, { useState, useMemo, useCallback, useEffect, KeyboardEvent, useRef } from "react";
 import "./live.css";
-import negativeScenario from "@/data/negative.json";
-import positiveScenario from "@/data/positive.json";
+import { SCENARIO_DATASETS, ScenarioChunk } from "@/data/scenarios";
+import {
+  exportConversationReport,
+  ChatMessage,
+  ScoreDetails,
+} from "@/utils/exportConversation";
 import {
   Broadcast,
   MagnifyingGlass,
@@ -21,45 +25,9 @@ import {
   Pause,
   ListNumbers,
   Flame,
-  FastForward
+  FastForward,
+  DownloadSimple
 } from "@phosphor-icons/react";
-
-interface DetectedKeyword {
-  keyword: string;
-  sentiment: string;
-}
-
-interface ScoreDetails {
-  emotion: string;
-  confidence: number;
-  emotion_weight: number;
-  effective_emotion_weight?: number;
-  previous_score: number;
-  dampening_factor: number;
-  dampened_raw_score: number;
-  score: number;
-  call_health_score?: number;
-  sentiment_trend?: string;
-  peak_negativity?: number;
-  turn_count?: number;
-  session_avg_score?: number;
-  escalation_triggered: boolean;
-}
-
-interface ChatMessage {
-  id: string;
-  speaker: "caller";
-  isolated_sentence: string;
-  phrase: string;
-  detected_keywords: DetectedKeyword[];
-  emotion: string;
-  sentiment_category: "positive" | "negative" | "neutral";
-  confidence: number;
-  emotion_weight: number;
-  effective_emotion_weight: number;
-  sentence_score: number;
-  running_score: number;
-}
 
 interface ChartPoint {
   turnIndex: number;
@@ -73,38 +41,6 @@ interface ChartPoint {
   speaker?: "caller";
   sentence?: string;
 }
-
-interface ScenarioChunk {
-  turn: number;
-  speaker: "caller";
-  text: string;
-  expectedMood: string;
-}
-
-export interface ScenarioDataset {
-  id: string;
-  name: string;
-  filename: string;
-  badgeColor: string;
-  data: ScenarioChunk[];
-}
-
-export const SCENARIO_DATASETS: Record<string, ScenarioDataset> = {
-  negative: {
-    id: "negative",
-    name: "Catastrophic Escalation Test",
-    filename: "negative.json",
-    badgeColor: "#dc2626",
-    data: negativeScenario as ScenarioChunk[],
-  },
-  positive: {
-    id: "positive",
-    name: "High Resolution & Praise Test",
-    filename: "positive.json",
-    badgeColor: "#059669",
-    data: positiveScenario as ScenarioChunk[],
-  },
-};
 
 const EMOTION_WEIGHT_MAP: Record<string, number> = {
   gratitude: 100.0,
@@ -561,6 +497,19 @@ export default function LiveMonitor() {
     }
   }, []);
 
+  // Download complete conversation report with plotted chart
+  const handleDownloadReport = useCallback(() => {
+    const svgEl = document.querySelector(".chart-svg") as SVGSVGElement | null;
+    exportConversationReport({
+      messages,
+      liveScore,
+      previousScore,
+      scoreDetails,
+      datasetName: activeDataset.filename,
+      svgElement: svgEl,
+    });
+  }, [messages, liveScore, previousScore, scoreDetails, activeDataset.filename]);
+
   // Message sender function exclusively for Caller (returns boolean success)
   const sendCallerUtterance = useCallback(
     async (textToSend: string): Promise<boolean> => {
@@ -895,7 +844,18 @@ export default function LiveMonitor() {
           </button>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          {/* Download Conversation Button */}
+          <button
+            onClick={handleDownloadReport}
+            disabled={messages.length === 0}
+            className="download-btn"
+            title="Download complete conversation report with plotted sentiment graph"
+          >
+            <DownloadSimple size={16} weight="bold" />
+            <span>Download Report</span>
+          </button>
+
           {liveScore <= -65 && (
             <div className="escalation-alert-badge">
               <WarningOctagon size={16} weight="fill" />
