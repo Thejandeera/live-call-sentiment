@@ -1,6 +1,7 @@
 import negativeScenario from "./negative.json";
 import positiveScenario from "./positive.json";
 import mixedScenario from "./mixed_sentiment_100_turns.json";
+import negative100Scenario from "./negative_100.json";
 
 export interface ScenarioChunk {
   turn: number;
@@ -76,6 +77,13 @@ export function loadAllScenarioDatasets(): Record<string, ScenarioDataset> {
       filename: "negative.json",
       badgeColor: "#dc2626",
       data: negativeScenario as ScenarioChunk[],
+    };
+    datasets["negative_100"] = {
+      id: "negative_100",
+      name: "Negative 100 (100 Turns)",
+      filename: "negative_100.json",
+      badgeColor: "#dc2626",
+      data: negative100Scenario as ScenarioChunk[],
     };
     datasets["positive"] = {
       id: "positive",
