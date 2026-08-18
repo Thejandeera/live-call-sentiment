@@ -37,10 +37,10 @@ EMOTION_WEIGHTS = {
 
 BASE_ALPHA = 0.3
 NEUTRAL_ALPHA = 0.04
-SATURATION_SCALE = 85.0  # Fix 4: Scaled from 75.0 to 85.0 for deep escalation traversal
+SATURATION_SCALE = 100.0  # Scaled to 100.0 for deep natural escalation traversal
 ESCALATION_THRESHOLD = -65.0
 
-# Fix 3: Unambiguous resolution emotions eligible for Fast Recovery (bypassing dampening)
+# Unambiguous resolution emotions eligible for Fast Recovery (bypassing dampening)
 FAST_RECOVERY_EMOTIONS = {
     "gratitude", "relief", "approval", "joy", "optimism", "caring", "admiration"
 }
@@ -80,6 +80,7 @@ class ScoreResponse(BaseModel):
 
 @app.post("/calculate-score", response_model=ScoreResponse)
 async def calculate_score(payload: ScoreRequest):
+    turn_count = max(1, payload.turn_count if payload.turn_count is not None else 1)
     emotion_clean = payload.emotion.strip().lower() if payload.emotion else "neutral"
     confidence = payload.confidence if (payload.confidence is not None and payload.confidence >= 0.0) else 1.0
     s_current = payload.previous_score if payload.previous_score is not None else 0.0
@@ -88,19 +89,24 @@ async def calculate_score(payload: ScoreRequest):
     w_destination = EMOTION_WEIGHTS.get(emotion_clean, 0.0)
     w_effective = w_destination * confidence
 
-    # Fix 1: Apply Confidence to Alpha (Learning Rate), NOT Target Weight
+    # Confidence scales the learning rate (how much we step toward that emotion)
     confidence_weight = max(0.40, confidence)
 
     dampening_factor = 1.0
 
     if emotion_clean == "neutral" or w_destination == 0.0:
-        effective_alpha = NEUTRAL_ALPHA * confidence_weight
-        dampening_factor = round(NEUTRAL_ALPHA / BASE_ALPHA, 4)
+        # Crisis Neutral Clamping: when in severe crisis (<= -65.0), neutral utterances (giving facts)
+        # do not decay the crisis state back to zero.
+        if s_current <= ESCALATION_THRESHOLD:
+            effective_alpha = 0.005
+        else:
+            effective_alpha = NEUTRAL_ALPHA * confidence_weight
+        dampening_factor = round(effective_alpha / BASE_ALPHA, 4)
     else:
         is_recovery = (s_current < 0 and w_destination > 0) or (s_current > 0 and w_destination < 0)
         
         if is_recovery:
-            # Fix 3: Bypasses dampening ONLY for genuine resolution emotions
+            # Fast Recovery: bypasses dampening ONLY for genuine resolution emotions
             if emotion_clean in FAST_RECOVERY_EMOTIONS or s_current >= 0:
                 dampening_factor = 1.0
             else:
@@ -122,14 +128,24 @@ async def calculate_score(payload: ScoreRequest):
             else:
                 dampening_factor = 1.0 / (1.0 + (abs_score / SATURATION_SCALE) ** 2)
 
-        # Fix 1: Alpha (learning rate) is scaled by dampening factor and confidence
-        effective_alpha = BASE_ALPHA * dampening_factor * confidence_weight
+        # Mild Negative Non-Relief Rule:
+        # When caller is already in severe crisis (<= -65.0), a milder negative emotion (e.g. fear -65, annoyance -70, curiosity -10)
+        # must NEVER pull the score upward as if it were a positive relief.
+        if s_current <= ESCALATION_THRESHOLD and w_destination < 0 and w_destination > s_current:
+            effective_alpha = 0.01
+        else:
+            effective_alpha = BASE_ALPHA * dampening_factor * confidence_weight
 
-    # Fix 1: Step towards w_destination (true severity target), not confidence-reduced target
+    # EMA update step towards destination
     s_new = (effective_alpha * w_destination) + ((1.0 - effective_alpha) * s_current)
+
+    # Sustained Crisis Duration Momentum (compounds over long calls when crisis is sustained)
+    if s_current <= ESCALATION_THRESHOLD and w_destination <= -50.0 and turn_count > 10:
+        duration_penalty = -min(0.60, (turn_count / 100.0) * 0.60)
+        s_new += duration_penalty
+
     s_new = max(-100.0, min(100.0, round(s_new, 2)))
 
-    turn_count = max(1, payload.turn_count if payload.turn_count is not None else 1)
     prev_session_avg = payload.session_avg_score if payload.session_avg_score is not None else s_current
     
     new_session_avg = round(((prev_session_avg * (turn_count - 1)) + s_new) / turn_count, 2)
@@ -170,4 +186,5 @@ async def calculate_score(payload: ScoreRequest):
         session_avg_score=new_session_avg,
         escalation_triggered=escalation_triggered,
     )
+
 
