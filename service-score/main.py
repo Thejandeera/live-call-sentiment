@@ -13,9 +13,9 @@ EMOTION_WEIGHTS = {
     "joy": 70.0,
     "admiration": 65.0,
     "excitement": 55.0,
-    "surprise": 45.0,
+    "surprise": 0.0,       # Fix 2: Neutral baseline for support call questions
     "amusement": 35.0,
-    "curiosity": 25.0,
+    "curiosity": -10.0,    # Fix 2: Mild friction for inquiry/rhetorical questions
     "pride": 15.0,
     "love": 10.0,
     "desire": 5.0,
@@ -37,8 +37,13 @@ EMOTION_WEIGHTS = {
 
 BASE_ALPHA = 0.3
 NEUTRAL_ALPHA = 0.04
-SATURATION_SCALE = 75.0
+SATURATION_SCALE = 85.0  # Fix 4: Scaled from 75.0 to 85.0 for deep escalation traversal
 ESCALATION_THRESHOLD = -65.0
+
+# Fix 3: Unambiguous resolution emotions eligible for Fast Recovery (bypassing dampening)
+FAST_RECOVERY_EMOTIONS = {
+    "gratitude", "relief", "approval", "joy", "optimism", "caring", "admiration"
+}
 
 
 class ScoreRequest(BaseModel):
@@ -80,18 +85,28 @@ async def calculate_score(payload: ScoreRequest):
     s_current = payload.previous_score if payload.previous_score is not None else 0.0
     s_current = max(-100.0, min(100.0, float(s_current)))
 
-    raw_weight = EMOTION_WEIGHTS.get(emotion_clean, 0.0)
-    w_effective = raw_weight * confidence
+    w_destination = EMOTION_WEIGHTS.get(emotion_clean, 0.0)
+    w_effective = w_destination * confidence
+
+    # Fix 1: Apply Confidence to Alpha (Learning Rate), NOT Target Weight
+    confidence_weight = max(0.40, confidence)
 
     dampening_factor = 1.0
 
-    if emotion_clean == "neutral" or raw_weight == 0.0:
-        effective_alpha = NEUTRAL_ALPHA
+    if emotion_clean == "neutral" or w_destination == 0.0:
+        effective_alpha = NEUTRAL_ALPHA * confidence_weight
         dampening_factor = round(NEUTRAL_ALPHA / BASE_ALPHA, 4)
     else:
-        same_direction = (s_current > 0 and w_effective > 0) or (s_current < 0 and w_effective < 0)
+        is_recovery = (s_current < 0 and w_destination > 0) or (s_current > 0 and w_destination < 0)
         
-        if same_direction:
+        if is_recovery:
+            # Fix 3: Bypasses dampening ONLY for genuine resolution emotions
+            if emotion_clean in FAST_RECOVERY_EMOTIONS or s_current >= 0:
+                dampening_factor = 1.0
+            else:
+                abs_score = abs(s_current)
+                dampening_factor = 1.0 / (1.0 + (abs_score / SATURATION_SCALE) ** 2)
+        else:
             abs_score = abs(s_current)
             if payload.negative_threshold_1 is not None or payload.negative_threshold_2 is not None:
                 neg_thresh_1 = payload.negative_threshold_1 if payload.negative_threshold_1 is not None else 50.0
@@ -106,12 +121,12 @@ async def calculate_score(payload: ScoreRequest):
                     dampening_factor = 1.0
             else:
                 dampening_factor = 1.0 / (1.0 + (abs_score / SATURATION_SCALE) ** 2)
-        else:
-            dampening_factor = 1.0
 
-        effective_alpha = BASE_ALPHA * dampening_factor
+        # Fix 1: Alpha (learning rate) is scaled by dampening factor and confidence
+        effective_alpha = BASE_ALPHA * dampening_factor * confidence_weight
 
-    s_new = (effective_alpha * w_effective) + ((1.0 - effective_alpha) * s_current)
+    # Fix 1: Step towards w_destination (true severity target), not confidence-reduced target
+    s_new = (effective_alpha * w_destination) + ((1.0 - effective_alpha) * s_current)
     s_new = max(-100.0, min(100.0, round(s_new, 2)))
 
     turn_count = max(1, payload.turn_count if payload.turn_count is not None else 1)
@@ -142,7 +157,7 @@ async def calculate_score(payload: ScoreRequest):
     return ScoreResponse(
         emotion=payload.emotion,
         confidence=confidence,
-        emotion_weight=raw_weight,
+        emotion_weight=w_destination,
         effective_emotion_weight=round(w_effective, 2),
         previous_score=round(s_current, 2),
         dampening_factor=round(dampening_factor, 4),

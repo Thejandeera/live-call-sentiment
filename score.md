@@ -9,14 +9,14 @@ This document provides a comprehensive technical specification of the standardiz
 The **Live Sentiment Score Service** (`service-score`) calculates a real-time Confidence-Weighted Dual-Horizon Sentiment Score $S \in [-100.0, +100.0]$ that tracks the emotional trajectory of live call sessions.
 
 ### Key Architectural Concepts:
-1. **Confidence-Weighted Emotion Signal ($W_{\text{effective}}$)**: Scales the raw emotion severity weight by model confidence ($W_{\text{effective}} = W_{\text{raw}} \times \text{confidence}$), preventing low-confidence predictions from polluting the score.
-2. **Neutral Inertia Attenuation ($\alpha_{\text{neutral}} = 0.04$)**: Eliminates the "Neutral Volatility Collapse" bug. Neutral statements cause a gentle, natural decay without resetting severe scores to zero.
-3. **Continuous Logistic Saturation Resistance ($D(S)$)**: Replaces abrupt hardcoded thresholds with a smooth continuous friction function $D(S) = \frac{1}{1 + (|S| / 75)^2}$.
-4. **Directional Awareness (Fast Recovery)**: Bypasses dampening ($D = 1.0$) when caller sentiment moves in the opposite direction (de-escalation), enabling rapid score recovery upon agent resolution.
+1. **Confidence-Scaled Learning Rate ($\alpha_{\text{effective}}$)**: Scales the EMA learning rate $\alpha_{\text{effective}} = \alpha_{\text{base}} \times D(S) \times \max(0.40, \text{confidence})$, stepping directly towards the true emotion severity weight $W_{\text{raw}}$. This prevents low-confidence predictions from capping severe scores or causing artificial score reversals.
+2. **Support Call Emotion Re-weighting**: Re-weights `curiosity` ($-10.0$, mild inquiry friction) and `surprise` ($0.0$, neutral baseline) to prevent rhetorical panicked customer questions from causing false positive spikes.
+3. **Continuous Logistic Saturation Resistance ($D(S)$)**: Smooth continuous friction function $D(S) = \frac{1}{1 + (|S| / 85.0)^2}$ with saturation scale $85.0$.
+4. **Resolution-Restricted Fast Recovery**: Bypasses dampening ($D = 1.0$) only for genuine resolution emotions (`{"gratitude", "relief", "approval", "joy", "optimism", "caring", "admiration"}`).
 5. **Dual-Horizon Session Metrics**:
    - **`live_score` ($S_{\text{live}}$)**: Instantaneous turn-by-turn EMA state.
-   - **`call_health_score` ($S_{\text{health}}$)**: Cumulative session health score ($70\%$ session average + $30\%$ live score), preserving long-call history even if the call ends calmly.
-   - **`sentiment_trend`**: Rate of score change over recent turns (`"Strong Recovery"`, `"De-escalating"`, `"Escalating"`, `"Stable"`).
+   - **`call_health_score` ($S_{\text{health}}$)**: Cumulative session health score ($70\%$ session average + $30\%$ live score).
+   - **`sentiment_trend`**: Rate of score change over recent turns (`"Strong Recovery"`, `"Escalating"`, `"Stable"`).
    - **`peak_negativity`**: Lowest score reached during the session.
 6. **Escalation Threshold Breach**: Triggers intervention when either $S_{\text{live}} \le -65.0$ or $S_{\text{health}} \le -65.0$.
 
@@ -61,14 +61,14 @@ The **Live Sentiment Score Service** (`service-score`) calculates a real-time Co
   "emotion_weight": -95.0,
   "effective_emotion_weight": -80.75,
   "previous_score": -70.0,
-  "dampening_factor": 0.5346,
-  "dampened_raw_score": -43.17,
-  "score": -72.68,
-  "call_health_score": -68.85,
+  "dampening_factor": 0.5960,
+  "dampened_raw_score": -48.05,
+  "score": -73.88,
+  "call_health_score": -69.21,
   "sentiment_trend": "Escalating",
-  "peak_negativity": -72.68,
+  "peak_negativity": -73.88,
   "turn_count": 5,
-  "session_avg_score": -66.54,
+  "session_avg_score": -67.22,
   "escalation_triggered": true
 }
 ```
@@ -98,12 +98,19 @@ Emotions are categorized into a hierarchical weight matrix ($+100.0$ for maximum
 | Emotion | Weight ($W_{\text{raw}}$) | Emotion | Weight ($W_{\text{raw}}$) |
 | :--- | :--- | :--- | :--- |
 | `gratitude` | $+100.0$ | `excitement` | $+55.0$ |
-| `relief` | $+95.0$ | `surprise` | $+45.0$ |
-| `approval` | $+85.0$ | `amusement` | $+35.0$ |
-| `optimism` | $+80.0$ | `curiosity` | $+25.0$ |
-| `caring` | $+75.0$ | `pride` | $+15.0$ |
-| `joy` | $+70.0$ | `love` | $+10.0$ |
-| `admiration` | $+65.0$ | `desire` | $+5.0$ |
+| `relief` | $+95.0$ | `amusement` | $+35.0$ |
+| `approval` | $+85.0$ | `pride` | $+15.0$ |
+| `optimism` | $+80.0$ | `love` | $+10.0$ |
+| `caring` | $+75.0$ | `desire` | $+5.0$ |
+| `joy` | $+70.0$ | | |
+| `admiration` | $+65.0$ | | |
+
+### Support Call Inquiry / Neutral Hierarchy
+| Emotion | Weight ($W_{\text{raw}}$) | Description |
+| :--- | :--- | :--- |
+| `surprise` | $0.0$ | Neutral baseline for support questions |
+| `curiosity` | $-10.0$ | Mild friction / inquiry sentiment |
+| `neutral` / unknown | $0.0$ | Neutral baseline |
 
 ### Negative Hierarchy ($-15.0$ to $-100.0$)
 | Emotion | Weight ($W_{\text{raw}}$) | Emotion | Weight ($W_{\text{raw}}$) |
