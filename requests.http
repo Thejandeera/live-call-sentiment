@@ -40,7 +40,7 @@ Content-Type: application/json
 }
 
 ### 2a. Get Admin Keywords Direct from Google Spreadsheet (Apps Script)
-GET https://script.google.com/macros/s/AKfycbwwudCW1hW9TbEV3btIXJl9rYi3GYU2E1jQ55mAXj9LAniuG8i0SLPMmrRrgWgsdHAQWA/exec
+GET https://script.google.com/macros/s/AKfycbwcsbQlp3MMkI-OiDqRKW2lC79Vyla6eb4AbiYMBea5syILcpiTM2EsWO6tFUHB9tJkTQ/exec
 
 ### 2b. Get Admin Keywords via Phrase Service
 GET http://localhost:8002/admin-keywords

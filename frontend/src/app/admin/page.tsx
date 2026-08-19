@@ -15,7 +15,7 @@ import {
   ArrowsClockwise
 } from "@phosphor-icons/react";
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwudCW1hW9TbEV3btIXJl9rYi3GYU2E1jQ55mAXj9LAniuG8i0SLPMmrRrgWgsdHAQWA/exec";
+const APPS_SCRIPT_URL = "https://docs.google.com/spreadsheets/d/1yeeIb2uFRsXWJWFXDlKSA8c0oc_FuLwapMF5OH7Sf3k/edit";
 
 interface KeywordData {
   keyword: string;
@@ -37,6 +37,31 @@ export default function AdminDashboard() {
     setIsLoading(true);
     setNetworkError(null);
     try {
+      if (APPS_SCRIPT_URL.includes("docs.google.com/spreadsheets")) {
+        const match = APPS_SCRIPT_URL.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+        if (match) {
+          const sheetId = match[1];
+          const gvizUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`;
+          const res = await fetch(gvizUrl);
+          if (!res.ok) throw new Error(`HTTP ${res.status} from Google Sheets`);
+          const text = await res.text();
+          const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+          const parsed: KeywordData[] = [];
+          for (let i = 1; i < lines.length; i++) {
+            const cols = lines[i].split(",").map(c => c.replace(/^"|"$/g, "").trim());
+            if (cols[0]) {
+              parsed.push({
+                keyword: cols[0].toLowerCase(),
+                sentiment: cols[1]?.toLowerCase() || "neutral",
+                weight: parseInt(cols[2]) || 0
+              });
+            }
+          }
+          setKeywords(parsed);
+          return;
+        }
+      }
+
       const res = await fetch(APPS_SCRIPT_URL, { method: "GET" });
       if (!res.ok) {
         throw new Error(`HTTP ${res.status} - Google Apps Script returned an error.`);
