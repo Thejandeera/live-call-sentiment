@@ -69,3 +69,13 @@ async def extract_keywords(payload: TextPayload):
         "matches": detected_keywords,
         "keywords": detected_keywords
     }
+
+@app.get("/admin-keywords")
+@app.get("/get-admin-keywords")
+async def get_admin_keywords():
+    try:
+        remote_data = requests.get(APPS_SCRIPT_URL).json()
+        return {"status": "success", "keywords": remote_data}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "keywords": []}
+

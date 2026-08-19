@@ -39,7 +39,13 @@ Content-Type: application/json
   "negative_threshold_2_dampening_factor": 0.15
 }
 
-### 2. Extract & Detect Admin Keywords
+### 2a. Get Admin Keywords Direct from Google Spreadsheet (Apps Script)
+GET https://script.google.com/macros/s/AKfycbwwudCW1hW9TbEV3btIXJl9rYi3GYU2E1jQ55mAXj9LAniuG8i0SLPMmrRrgWgsdHAQWA/exec
+
+### 2b. Get Admin Keywords via Phrase Service
+GET http://localhost:8002/admin-keywords
+
+### 2c. Extract & Detect Admin Keywords in Text
 POST http://localhost:8002/extract-keywords
 Content-Type: application/json
 
