@@ -328,3 +328,93 @@ export function exportConversationJSON(messages: ChatMessage[], liveScore: numbe
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+export interface ExportCSVOptions {
+  messages: ChatMessage[];
+  liveScore: number;
+  previousScore: number;
+  scoreDetails: ScoreDetails | null;
+  datasetName: string;
+}
+
+/**
+ * Utility to export complete conversation transcript and session metrics as a clean tabular CSV file.
+ */
+export function exportConversationCSV({
+  messages,
+  liveScore,
+  previousScore,
+  scoreDetails,
+  datasetName,
+}: ExportCSVOptions): void {
+  const timestamp = new Date().toLocaleString();
+  const fileDate = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+
+  const escapeCSV = (val: string | number | null | undefined): string => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val);
+    if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return `"${str}"`;
+  };
+
+  const callHealth = scoreDetails?.call_health_score ?? liveScore;
+  const peakNeg = scoreDetails?.peak_negativity ?? liveScore;
+  const peakNegFormatted = peakNeg > 0 ? `+${peakNeg.toFixed(2)}` : peakNeg.toFixed(2);
+  const trend = scoreDetails?.sentiment_trend ?? "Stable";
+  const isEscalation = liveScore <= -65 || (scoreDetails?.escalation_triggered ?? false);
+
+  const csvRows: string[] = [];
+
+  // ==========================================
+  // SECTION 1: EXECUTIVE SUMMARY & SESSION KPIS
+  // ==========================================
+  csvRows.push("=== LIVE CALL SENTIMENT ANALYSIS REPORT ===");
+  csvRows.push("Metric,Value");
+  csvRows.push(`Dataset Scenario,${escapeCSV(datasetName)}`);
+  csvRows.push(`Generated At,${escapeCSV(timestamp)}`);
+  csvRows.push(`Final Sentiment Score,${escapeCSV(liveScore > 0 ? `+${liveScore.toFixed(2)}` : liveScore.toFixed(2))}`);
+  csvRows.push(`Call Health Score,${escapeCSV(callHealth > 0 ? `+${callHealth.toFixed(2)}` : callHealth.toFixed(2))}`);
+  csvRows.push(`Peak Negativity,${escapeCSV(peakNegFormatted)}`);
+  csvRows.push(`Sentiment Trajectory Trend,${escapeCSV(trend)}`);
+  csvRows.push(`Total Turns Processed,${escapeCSV(messages.length)}`);
+  csvRows.push(`Escalation Alert Triggered,${escapeCSV(isEscalation ? "YES (BREACHED <= -65.0)" : "NO")}`);
+  csvRows.push("");
+
+  // ==========================================
+  // SECTION 2: COMPLETE TURN-BY-TURN CONVERSATION DATA
+  // ==========================================
+  csvRows.push("=== COMPLETE TURN-BY-TURN CONVERSATION DATA ===");
+  csvRows.push("Turn,Speaker,Utterance_Text,Sentiment_Category,Detected_Emotion,Confidence_Pct,Raw_Emotion_Weight,Effective_Emotion_Weight,Sentence_Score,Running_Sentiment_Score,Detected_Keywords");
+  
+  messages.forEach((msg, idx) => {
+    const kwList = (msg.detected_keywords || []).map(k => k.keyword).join("; ");
+    csvRows.push([
+      idx + 1,
+      escapeCSV("Caller"),
+      escapeCSV(msg.isolated_sentence),
+      escapeCSV(msg.sentiment_category),
+      escapeCSV(msg.emotion || "neutral"),
+      escapeCSV(`${(msg.confidence * 100).toFixed(1)}%`),
+      escapeCSV(msg.emotion_weight > 0 ? `+${msg.emotion_weight}` : msg.emotion_weight),
+      escapeCSV(msg.effective_emotion_weight > 0 ? `+${msg.effective_emotion_weight.toFixed(1)}` : msg.effective_emotion_weight.toFixed(1)),
+      escapeCSV(msg.sentence_score),
+      escapeCSV(msg.running_score > 0 ? `+${msg.running_score.toFixed(2)}` : msg.running_score.toFixed(2)),
+      escapeCSV(kwList || "None")
+    ].join(","));
+  });
+
+  const csvContent = csvRows.join("\r\n");
+  const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `live_call_sentiment_data_${fileDate}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+

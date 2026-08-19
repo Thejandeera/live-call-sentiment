@@ -12,13 +12,13 @@ EMOTION_WEIGHTS = {
     "caring": 75.0,
     "joy": 70.0,
     "admiration": 65.0,
-    "excitement": 55.0,
-    "surprise": 0.0,       # Fix 2: Neutral baseline for support call questions
-    "amusement": 35.0,
-    "curiosity": -10.0,    # Fix 2: Mild friction for inquiry/rhetorical questions
-    "pride": 15.0,
-    "love": 10.0,
-    "desire": 5.0,
+    "excitement": 60.0,
+    "surprise": 0.0,       # Neutral baseline for support call questions
+    "amusement": 45.0,
+    "curiosity": -10.0,    # Mild friction for inquiry/rhetorical questions
+    "pride": 40.0,
+    "love": 35.0,
+    "desire": 25.0,
     "anger": -100.0,
     "disgust": -95.0,
     "grief": -90.0,
@@ -37,12 +37,14 @@ EMOTION_WEIGHTS = {
 
 BASE_ALPHA = 0.3
 NEUTRAL_ALPHA = 0.04
-SATURATION_SCALE = 100.0  # Scaled to 100.0 for deep natural escalation traversal
+SATURATION_SCALE = 100.0           # Scaled to 100.0 for deep natural negative escalation traversal
+POSITIVE_SATURATION_SCALE = 150.0  # Reduced friction scale for smooth positive trajectory climbing
 ESCALATION_THRESHOLD = -65.0
 
-# Unambiguous resolution emotions eligible for Fast Recovery (bypassing dampening)
+# Resolution & positive emotions eligible for Fast Recovery (bypassing dampening when recovering)
 FAST_RECOVERY_EMOTIONS = {
-    "gratitude", "relief", "approval", "joy", "optimism", "caring", "admiration"
+    "gratitude", "relief", "approval", "joy", "optimism", "caring", "admiration",
+    "excitement", "amusement", "pride", "love", "desire"
 }
 
 
@@ -114,7 +116,10 @@ async def calculate_score(payload: ScoreRequest):
                 dampening_factor = 1.0 / (1.0 + (abs_score / SATURATION_SCALE) ** 2)
         else:
             abs_score = abs(s_current)
-            if payload.negative_threshold_1 is not None or payload.negative_threshold_2 is not None:
+            if w_destination > 0:
+                # Reduced positive friction scale: makes climbing up to +80..+100 smoother
+                dampening_factor = 1.0 / (1.0 + (abs_score / POSITIVE_SATURATION_SCALE) ** 2)
+            elif payload.negative_threshold_1 is not None or payload.negative_threshold_2 is not None:
                 neg_thresh_1 = payload.negative_threshold_1 if payload.negative_threshold_1 is not None else 50.0
                 neg_damp_1 = payload.negative_threshold_1_dampening_factor if payload.negative_threshold_1_dampening_factor is not None else 0.5
                 neg_thresh_2 = payload.negative_threshold_2 if payload.negative_threshold_2 is not None else 80.0

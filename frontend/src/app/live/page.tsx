@@ -5,6 +5,7 @@ import "./live.css";
 import { SCENARIO_DATASETS, ScenarioChunk } from "@/data/scenarios";
 import {
   exportConversationReport,
+  exportConversationCSV,
   ChatMessage,
   ScoreDetails,
 } from "@/utils/exportConversation";
@@ -26,7 +27,8 @@ import {
   ListNumbers,
   Flame,
   FastForward,
-  DownloadSimple
+  DownloadSimple,
+  Table
 } from "@phosphor-icons/react";
 
 interface ChartPoint {
@@ -50,13 +52,13 @@ const EMOTION_WEIGHT_MAP: Record<string, number> = {
   caring: 75.0,
   joy: 70.0,
   admiration: 65.0,
-  excitement: 55.0,
+  excitement: 60.0,
   surprise: 0.0,
-  amusement: 35.0,
+  amusement: 45.0,
   curiosity: -10.0,
-  pride: 15.0,
-  love: 10.0,
-  desire: 5.0,
+  pride: 40.0,
+  love: 35.0,
+  desire: 25.0,
   anger: -100.0,
   disgust: -95.0,
   grief: -90.0,
@@ -510,6 +512,17 @@ export default function LiveMonitor() {
     });
   }, [messages, liveScore, previousScore, scoreDetails, activeDataset.filename]);
 
+  // Export full transcript and session KPIs to CSV
+  const handleDownloadCSV = useCallback(() => {
+    exportConversationCSV({
+      messages,
+      liveScore,
+      previousScore,
+      scoreDetails,
+      datasetName: activeDataset.filename,
+    });
+  }, [messages, liveScore, previousScore, scoreDetails, activeDataset.filename]);
+
   // Message sender function exclusively for Caller (returns boolean success)
   const sendCallerUtterance = useCallback(
     async (textToSend: string): Promise<boolean> => {
@@ -845,15 +858,26 @@ export default function LiveMonitor() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          {/* Download Conversation Button */}
+          {/* Download Conversation HTML Report */}
           <button
             onClick={handleDownloadReport}
             disabled={messages.length === 0}
             className="download-btn"
-            title="Download complete conversation report with plotted sentiment graph"
+            title="Download complete conversation report with plotted sentiment graph (HTML)"
           >
             <DownloadSimple size={16} weight="bold" />
             <span>Download Report</span>
+          </button>
+
+          {/* Export CSV Button */}
+          <button
+            onClick={handleDownloadCSV}
+            disabled={messages.length === 0}
+            className="export-csv-btn"
+            title="Export complete conversation transcript and session data to CSV"
+          >
+            <Table size={16} weight="bold" />
+            <span>Export CSV</span>
           </button>
 
           {liveScore <= -65 && (
