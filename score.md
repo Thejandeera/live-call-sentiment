@@ -15,7 +15,7 @@ The **Live Sentiment Score Service** (`service-score`) calculates a real-time Co
 4. **Mild Negative Non-Relief Rule**: When a call is already in severe crisis ($S_{\text{current}} \le -65.0$), milder negative emotions (e.g. `fear` $-65$, `annoyance` $-70$, `curiosity` $-10$) are clamped with minimal alpha ($\alpha = 0.01$) so they never pull an extreme crisis score upward as if they were positive relief.
 5. **Crisis Neutral Clamping**: When $S_{\text{current}} \le -65.0$, factual/neutral statements (e.g. giving account numbers) decay by only $0.5\%$ instead of $4\%$, preserving caller crisis context.
 6. **Sustained Duration Compounding**: When severe friction ($S \le -65.0, W \le -50.0$) persists across dozens of turns without resolution ($t > 10$), an incremental duration momentum penalty $- \min(0.60, \frac{t}{100} \times 0.60)$ compounds the score, allowing 100-turn catastrophic calls to smoothly reach $-95.0 \to -99.6$.
-7. **Resolution-Restricted Fast Recovery**: Bypasses dampening ($D = 1.0$) only for genuine resolution emotions (`{"gratitude", "relief", "approval", "joy", "optimism", "caring", "admiration"}`).
+7. **Fast Recovery for Positive Transitions**: Bypasses dampening ($D = 1.0$) for all positive and resolution emotions (`{"gratitude", "relief", "approval", "joy", "optimism", "caring", "admiration", "excitement", "amusement", "pride", "love", "desire"}`), eliminating drag when moving towards positive.
 8. **Dual-Horizon Session Metrics**:
    - **`live_score` ($S_{\text{live}}$)**: Instantaneous turn-by-turn EMA state.
    - **`call_health_score` ($S_{\text{health}}$)**: Cumulative session health score ($70\%$ session average + $30\%$ live score).
@@ -80,14 +80,14 @@ The **Live Sentiment Score Service** (`service-score`) calculates a real-time Co
 
 ## 3. Contextual Severity Emotion Weights (`EMOTION_WEIGHTS`)
 
-### Positive Hierarchy ($+5.0$ to $+100.0$)
+### Positive Hierarchy ($+25.0$ to $+100.0$)
 | Emotion | Weight ($W_{\text{raw}}$) | Emotion | Weight ($W_{\text{raw}}$) |
 | :--- | :--- | :--- | :--- |
-| `gratitude` | $+100.0$ | `excitement` | $+55.0$ |
-| `relief` | $+95.0$ | `amusement` | $+35.0$ |
-| `approval` | $+85.0$ | `pride` | $+15.0$ |
-| `optimism` | $+80.0$ | `love` | $+10.0$ |
-| `caring` | $+75.0$ | `desire` | $+5.0$ |
+| `gratitude` | $+100.0$ | `excitement` | $+60.0$ |
+| `relief` | $+95.0$ | `amusement` | $+45.0$ |
+| `approval` | $+85.0$ | `pride` | $+40.0$ |
+| `optimism` | $+80.0$ | `love` | $+35.0$ |
+| `caring` | $+75.0$ | `desire` | $+25.0$ |
 | `joy` | $+70.0$ | | |
 | `admiration` | $+65.0$ | | |
 
