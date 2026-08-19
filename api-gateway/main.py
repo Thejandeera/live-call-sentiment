@@ -28,6 +28,10 @@ class MessagePayload(BaseModel):
     text: str
     speaker: Optional[str] = "caller"
     previous_score: Optional[float] = 0.0
+    session_avg_score: Optional[float] = None
+    turn_count: Optional[int] = 1
+    peak_negativity: Optional[float] = None
+    recent_scores: Optional[List[float]] = None
     negative_threshold_1: Optional[float] = None
     negative_threshold_1_dampening_factor: Optional[float] = None
     negative_threshold_2: Optional[float] = None
@@ -51,6 +55,7 @@ async def shutdown_event():
         await http_client.aclose()
 
 @app.post("/api/v1/process-text")
+@app.post("/api/v1/process-message")
 async def process_message(payload: MessagePayload):
     try:
         start_time = time.perf_counter()
@@ -92,18 +97,33 @@ async def process_message(payload: MessagePayload):
             "emotion": emotion,
             "confidence": confidence,
             "emotion_weight": 0.0,
+            "effective_emotion_weight": 0.0,
             "previous_score": previous_score,
             "dampening_factor": 1.0,
             "dampened_raw_score": 0.0,
             "score": previous_score,
+            "call_health_score": previous_score,
+            "sentiment_trend": "Stable",
+            "peak_negativity": previous_score,
+            "turn_count": payload.turn_count or 1,
+            "session_avg_score": previous_score,
             "escalation_triggered": previous_score <= -65.0
         }
 
         score_req_payload = {
             "emotion": emotion,
             "confidence": confidence,
-            "previous_score": previous_score
+            "previous_score": previous_score,
+            "speaker": speaker
         }
+        if payload.session_avg_score is not None:
+            score_req_payload["session_avg_score"] = payload.session_avg_score
+        if payload.turn_count is not None:
+            score_req_payload["turn_count"] = payload.turn_count
+        if payload.peak_negativity is not None:
+            score_req_payload["peak_negativity"] = payload.peak_negativity
+        if payload.recent_scores is not None:
+            score_req_payload["recent_scores"] = payload.recent_scores
         if payload.negative_threshold_1 is not None:
             score_req_payload["negative_threshold_1"] = payload.negative_threshold_1
         if payload.negative_threshold_1_dampening_factor is not None:
@@ -126,6 +146,7 @@ async def process_message(payload: MessagePayload):
         end_time = time.perf_counter()
         processing_time_ms = round((end_time - start_time) * 1000, 2)
 
+        calculated_score = score_details.get("score", previous_score)
         return {
             "status": "success",
             "processing_time_ms": processing_time_ms,
@@ -133,9 +154,13 @@ async def process_message(payload: MessagePayload):
                 "isolated_sentence": text,
                 "detected_keywords": detected_keywords,
                 "emotion": emotion,
+                "confidence": confidence,
                 "sentiment_category": sentiment_category,
-                "live_score": score_details.get("score", previous_score)
+                "final_score": calculated_score,
+                "score": calculated_score,
+                "live_score": calculated_score
             }]
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Gateway Error: {str(e)}")
+

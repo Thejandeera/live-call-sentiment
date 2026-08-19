@@ -21,11 +21,11 @@ roberta_model = None
 
 def categorize_emotion(emotion: str, score: float) -> str:
     positive_emotions = {
-        "admiration", "amusement", "approval", "caring", "curiosity", "desire",
+        "admiration", "amusement", "approval", "caring", "desire",
         "excitement", "gratitude", "joy", "love", "optimism", "pride", "relief"
     }
     negative_emotions = {
-        "anger", "annoyance", "confusion", "disappointment", "disapproval", "disgust",
+        "anger", "annoyance", "confusion", "curiosity", "disappointment", "disapproval", "disgust",
         "embarrassment", "fear", "grief", "nervousness", "realization", "remorse", "sadness"
     }
     if emotion in positive_emotions:
@@ -33,7 +33,7 @@ def categorize_emotion(emotion: str, score: float) -> str:
     elif emotion in negative_emotions:
         return "negative" if score >= 0.20 else "neutral"
     else:
-        return "positive" if emotion == "surprise" and score >= 0.75 else "neutral"
+        return "neutral"
 
 @app.on_event("startup")
 def load_model():
