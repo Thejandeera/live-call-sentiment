@@ -67,10 +67,6 @@ class ScoreRequest(BaseModel):
     speaker: Optional[str] = "caller"
     peak_negativity: Optional[float] = None
     recent_scores: Optional[List[float]] = None
-    negative_threshold_1: Optional[float] = None
-    negative_threshold_1_dampening_factor: Optional[float] = None
-    negative_threshold_2: Optional[float] = None
-    negative_threshold_2_dampening_factor: Optional[float] = None
 
 
 class ScoreResponse(BaseModel):
@@ -139,19 +135,7 @@ async def calculate_score(payload: ScoreRequest):
         else:
             abs_score = abs(s_current)
             if w_destination > 0:
-               
                 dampening_factor = 1.0 / (1.0 + (abs_score / POSITIVE_SATURATION_SCALE) ** 2)
-            elif payload.negative_threshold_1 is not None or payload.negative_threshold_2 is not None:
-                neg_thresh_1 = payload.negative_threshold_1 if payload.negative_threshold_1 is not None else 50.0
-                neg_damp_1 = payload.negative_threshold_1_dampening_factor if payload.negative_threshold_1_dampening_factor is not None else 0.5
-                neg_thresh_2 = payload.negative_threshold_2 if payload.negative_threshold_2 is not None else 80.0
-                neg_damp_2 = payload.negative_threshold_2_dampening_factor if payload.negative_threshold_2_dampening_factor is not None else 0.2
-                if abs_score >= neg_thresh_2:
-                    dampening_factor = neg_damp_2
-                elif abs_score >= neg_thresh_1:
-                    dampening_factor = neg_damp_1
-                else:
-                    dampening_factor = 1.0
             else:
                 dampening_factor = 1.0 / (1.0 + (abs_score / SATURATION_SCALE) ** 2)
 

@@ -44,10 +44,6 @@ class MessagePayload(BaseModel):
     turn_count: Optional[int] = 1
     peak_negativity: Optional[float] = None
     recent_scores: Optional[List[float]] = None
-    negative_threshold_1: Optional[float] = None
-    negative_threshold_1_dampening_factor: Optional[float] = None
-    negative_threshold_2: Optional[float] = None
-    negative_threshold_2_dampening_factor: Optional[float] = None
 
 PHRASE_SERVICE_URL = os.getenv("PHRASE_SERVICE_URL")
 PHRASE_SERVICE_BASE = PHRASE_SERVICE_URL.rsplit('/', 1)[0]
@@ -194,14 +190,6 @@ async def process_message(payload: MessagePayload):
             score_req_payload["peak_negativity"] = payload.peak_negativity
         if payload.recent_scores is not None:
             score_req_payload["recent_scores"] = payload.recent_scores
-        if payload.negative_threshold_1 is not None:
-            score_req_payload["negative_threshold_1"] = payload.negative_threshold_1
-        if payload.negative_threshold_1_dampening_factor is not None:
-            score_req_payload["negative_threshold_1_dampening_factor"] = payload.negative_threshold_1_dampening_factor
-        if payload.negative_threshold_2 is not None:
-            score_req_payload["negative_threshold_2"] = payload.negative_threshold_2
-        if payload.negative_threshold_2_dampening_factor is not None:
-            score_req_payload["negative_threshold_2_dampening_factor"] = payload.negative_threshold_2_dampening_factor
 
         try:
             score_res = await client.post(
