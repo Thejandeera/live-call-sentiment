@@ -43,17 +43,17 @@ The Live Call Sentiment platform is designed around a **decoupled, asynchronous 
 - **Port**: `8003` (configurable via `SENTIMENT_SERVICE_PORT`).
 - **Model**: `SamLowe/roberta-base-go_emotions` (fine-tuned RoBERTa on Reddit GoEmotions dataset spanning 28 fine-grained emotions).
 - **Execution Mode**: PyTorch `torch.inference_mode()` with token truncation (`max_length=128`) and batching support (`batch_size=32`), minimizing VRAM/RAM overhead and eliminating computational graph construction.
-- **Categorization**: Maps 28 emotions to tri-state sentiment polarity (`positive`, `negative`, `neutral`) using a $0.20$ minimum confidence threshold.
+- **Categorization**: Maps 28 emotions to tri-state sentiment polarity (`positive`, `negative`, `neutral`) using a `0.20` minimum confidence threshold.
 
 ### 2.4 Live Sentiment Scoring Engine (`service-score/main.py`)
 - **Role**: Standardized Dual-Horizon stateful mathematical scoring engine.
 - **Port**: `8004` (configurable via `SCORE_SERVICE_PORT`).
 - **Mathematical Foundations**:
-  - **Confidence-Scaled Step Size ($\alpha_{\text{effective}}$)**: Prevents low-confidence noise from causing score reversal paradoxes.
-  - **Continuous Logistic Saturation ($D(S)$)**: Smooth non-linear resistance as scores traverse towards $\pm 100.0$.
+  - **Confidence-Scaled Step Size (`alpha_effective`)**: Prevents low-confidence noise from causing score reversal paradoxes.
+  - **Continuous Logistic Saturation (`D(S)`)**: Smooth non-linear resistance as scores traverse towards `+100.0` or `-100.0`.
   - **Mild Negative Non-Relief Rule**: Prevents milder negative emotions during severe crisis from triggering false recovery.
   - **Crisis Neutral Clamping**: Preserves crisis context during informational neutral utterances.
-  - **Dual-Horizon Call Health Aggregator ($S_{\text{health}}$)**: Weighted fusion of cumulative session average ($70\%$) and instantaneous live score ($30\%$).
+  - **Dual-Horizon Call Health Aggregator (`S_health`)**: Weighted fusion of cumulative session average (70%) and instantaneous live score (30%).
 
 ---
 
@@ -112,5 +112,5 @@ Each microservice leverages a targeted, lightweight set of packages selected for
 ### 7.2 Scaling Recommendations
 1. **API Gateway**: Stateless and I/O bound. Scale horizontally with multiple workers (`uvicorn main:app --workers 4`).
 2. **Phrase Service**: CPU bound during startup; in-memory lookup during runtime. MongoDB connection pooling handles high concurrent read/write queries.
-3. **Sentiment Service**: Compute/RAM bound. When running on CPU, allocate $\ge 2\text{GB}$ RAM per instance; for high-concurrency environments ($>100\text{ req/sec}$), deploy on an NVIDIA T4/A10 GPU with TensorRT or ONNX Runtime acceleration.
-4. **Score Service**: Pure mathematical operations ($\approx 0.5\text{ms}$ latency). A single instance easily handles $>2,000\text{ req/sec}$.
+3. **Sentiment Service**: Compute/RAM bound. When running on CPU, allocate at least 2GB RAM per instance; for high-concurrency environments (>100 req/sec), deploy on an NVIDIA T4/A10 GPU with TensorRT or ONNX Runtime acceleration.
+4. **Score Service**: Pure mathematical operations (approx 0.5ms latency). A single instance easily handles >2,000 req/sec.

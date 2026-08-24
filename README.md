@@ -12,7 +12,7 @@ A high-throughput, decoupled AI microservices platform designed for real-time li
 
 ---
 
-## 📖 Table of Contents
+## Table of Contents
 
 - [1. Overview & Core Value Proposition](#1-overview--core-value-proposition)
 - [2. System Architecture Summary](#2-system-architecture-summary)
@@ -52,106 +52,118 @@ live-call-sentiment/
 ├── service-score/          # Dual-Horizon mathematical scoring engine (Port 8004)
 ├── .env.example            # Environment configuration template
 ├── .env                    # Local runtime environment
-├── architecture.md         # Full system architecture & Mermaid diagrams
+├── architecture.md         # Full system architecture specification
 ├── requests.http           # REST API test suite
 ├── start_services.bat      # Windows batch startup script
 └── README.md               # Primary project documentation
 ```
 
-For full sequence diagrams, state machines, and component topologies, see [`architecture.md`](./architecture.md).
+For full diagrams, state machines, and component topologies, see [`architecture.md`](./architecture.md).
 
 ---
 
 ## 3. Scoring Engine Logic & Mathematical Formulas
 
-The sentiment scoring engine (`service-score`) calculates a real-time sentiment score $S \in [-100.0, +100.0]$ across every conversational turn.
+The sentiment scoring engine (`service-score`) calculates a real-time sentiment score `S` in the range `[-100.0, +100.0]` across every conversational turn.
 
-### 3.1 Emotion Severity Weight Matrix ($W_{\text{destination}}$)
+### 3.1 Emotion Severity Weight Matrix 
 
 Every detected emotion maps to a standardized severity weight:
 
-| Category | Emotion Label | Raw Weight ($W_{\text{raw}}$) | Notes / Behavior |
+| Category | Emotion Label | Raw Weight | Notes / Behavior |
 | :--- | :--- | :--- | :--- |
-| **High Positive** | `gratitude` | $+100.0$ | Complete resolution / appreciation |
-| | `relief` | $+95.0$ | Anxiety resolved |
-| | `approval` | $+85.0$ | Customer agrees with proposal |
-| | `optimism`, `caring`, `joy` | $+80.0 \dots +70.0$ | Positive customer tone |
-| | `admiration`, `excitement` | $+65.0 \dots +60.0$ | High engagement |
-| **Mild Positive** | `amusement`, `pride`, `love`, `desire` | $+45.0 \dots +25.0$ | Pleasant interaction |
-| **Neutral / Inquiry** | `surprise` | $0.0$ | Neutral baseline for support inquiries |
-| | `curiosity` | $-10.0$ | Re-weighted to mild friction for support calls |
-| | `neutral` | $0.0$ | Informational baseline |
-| **Mild Negative** | `realization`, `confusion` | $-15.0 \dots -25.0$ | Information mismatch |
-| | `embarrassment`, `nervousness` | $-35.0 \dots -45.0$ | Customer unease |
-| | `remorse`, `fear` | $-55.0 \dots -65.0$ | Escalation impending |
-| **Severe Negative** | `annoyance`, `disapproval` | $-70.0 \dots -75.0$ | Friction building |
-| | `disappointment`, `sadness` | $-80.0 \dots -85.0$ | Customer distress |
-| | `grief`, `disgust` | $-90.0 \dots -95.0$ | Severe hostility |
-| | `anger` | $-100.0$ | Maximum hostility / churn risk |
+| **High Positive** | `gratitude` | `+100.0` | Complete resolution / appreciation |
+| | `relief` | `+95.0` | Anxiety resolved |
+| | `approval` | `+85.0` | Customer agrees with proposal |
+| | `optimism`, `caring`, `joy` | `+80.0` to `+70.0` | Positive customer tone |
+| | `admiration`, `excitement` | `+65.0` to `+60.0` | High engagement |
+| **Mild Positive** | `amusement`, `pride`, `love`, `desire` | `+45.0` to `+25.0` | Pleasant interaction |
+| **Neutral / Inquiry** | `surprise` | `0.0` | Neutral baseline for support inquiries |
+| | `curiosity` | `-10.0` | Re-weighted to mild friction for support calls |
+| | `neutral` | `0.0` | Informational baseline |
+| **Mild Negative** | `realization`, `confusion` | `-15.0` to `-25.0` | Information mismatch |
+| | `embarrassment`, `nervousness` | `-35.0` to `-45.0` | Customer unease |
+| | `remorse`, `fear` | `-55.0` to `-65.0` | Escalation impending |
+| **Severe Negative** | `annoyance`, `disapproval` | `-70.0` to `-75.0` | Friction building |
+| | `disappointment`, `sadness` | `-80.0` to `-85.0` | Customer distress |
+| | `grief`, `disgust` | `-90.0` to `-95.0` | Severe hostility |
+| | `anger` | `-100.0` | Maximum hostility / churn risk |
 
 ---
 
-### 3.2 Confidence-Scaled Step Size ($\alpha_{\text{effective}}$)
+### 3.2 Confidence-Scaled Step Size
 
-To eliminate the **Score Reversal Paradox**, confidence ($C \in [0.0, 1.0]$) scales the *step size* ($\alpha$), while the target destination remains fixed at $W_{\text{destination}}$:
+To eliminate the **Score Reversal Paradox**, confidence (`C` in `[0.0, 1.0]`) scales the step size (`alpha`), while the target destination remains fixed at `W_destination`:
 
-$$\text{confidence\_weight} = \max(0.40, C)$$
-
-$$\alpha_{\text{effective}} = \text{BASE\_ALPHA} \times D(S) \times \text{confidence\_weight} \quad (\text{where } \text{BASE\_ALPHA} = 0.30)$$
-
-$$S_{\text{new}} = (\alpha_{\text{effective}} \times W_{\text{destination}}) + ((1.0 - \alpha_{\text{effective}}) \times S_{\text{current}})$$
+```python
+confidence_weight = max(0.40, confidence)
+alpha_effective = BASE_ALPHA * dampening_factor * confidence_weight  # where BASE_ALPHA = 0.30
+S_new = (alpha_effective * W_destination) + ((1.0 - alpha_effective) * S_current)
+```
 
 ---
 
-### 3.3 Continuous Logistic Saturation Resistance ($D(S)$)
+### 3.3 Continuous Logistic Saturation Resistance (`D(S)`)
 
 Replaces rigid step thresholds with a smooth continuous friction function:
 
-$$D(S) = \frac{1}{1 + \left(\frac{|S_{\text{current}}|}{\text{SATURATION\_SCALE}}\right)^2}$$
+```python
+dampening_factor = 1.0 / (1.0 + (abs(S_current) / SATURATION_SCALE) ** 2)
+```
 
-- **Negative Escalation Scale**: $\text{SATURATION\_SCALE} = 100.0$ (allows deep natural progression into $-65.0 \to -95.0$).
-- **Positive Climbing Scale**: $\text{POSITIVE\_SATURATION\_SCALE} = 150.0$ (smooth climbing into $+80.0 \to +100.0$).
+- **Negative Escalation Scale**: `SATURATION_SCALE = 100.0` (allows deep natural progression into `-65.0` to `-95.0`).
+- **Positive Climbing Scale**: `POSITIVE_SATURATION_SCALE = 150.0` (smooth climbing into `+80.0` to `+100.0`).
 
 ---
 
 ### 3.4 Mild Negative Non-Relief Rule
 
-When a call is already in severe crisis ($S_{\text{current}} \le -65.0$), a milder negative emotion (e.g. `fear` $-65$, `annoyance` $-70$, `curiosity` $-10$) must **never** pull the score upward:
+When a call is already in severe crisis (`S_current <= -65.0`), a milder negative emotion (e.g. `fear` -65, `annoyance` -70, `curiosity` -10) must **never** pull the score upward:
 
-$$\text{If } S_{\text{current}} \le -65.0 \text{ and } W_{\text{destination}} < 0 \text{ and } W_{\text{destination}} > S_{\text{current}} \implies \alpha_{\text{effective}} = 0.01$$
+```python
+if S_current <= -65.0 and W_destination < 0 and W_destination > S_current:
+    alpha_effective = 0.01
+```
 
 ---
 
 ### 3.5 Crisis Neutral Clamping & Neutral Inertia
 
-- **Standard Neutral Inertia**: Neutral statements decay by only $3\text{--}4\%$ per turn ($\alpha_{\text{neutral}} = 0.04$).
-- **Crisis Neutral Clamping**: If $S_{\text{current}} \le -65.0$, factual/neutral statements (e.g., providing an address or ID) decay by only $0.5\%$ ($\alpha = 0.005$), preserving crisis context.
+- **Standard Neutral Inertia**: Neutral statements decay by only 3% to 4% per turn (`alpha_neutral = 0.04`).
+- **Crisis Neutral Clamping**: If `S_current <= -65.0`, factual/neutral statements (e.g., providing an address or ID) decay by only 0.5% (`alpha = 0.005`), preserving crisis context.
 
 ---
 
 ### 3.6 Sustained Crisis Duration Momentum
 
-When severe friction ($S \le -65.0$ and $W \le -50.0$) persists across multiple turns ($t > 10$), an incremental duration penalty compounds the score:
+When severe friction (`S <= -65.0` and `W <= -50.0`) persists across multiple turns (`turn_count > 10`), an incremental duration penalty compounds the score:
 
-$$S_{\text{new}} \leftarrow S_{\text{new}} - \min\left(0.60, \frac{t}{100} \times 0.60\right)$$
+```python
+if S_current <= -65.0 and W_destination <= -50.0 and turn_count > 10:
+    duration_penalty = min(0.60, (turn_count / 100.0) * 0.60)
+    S_new = S_new - duration_penalty
+```
 
 ---
 
 ### 3.7 Fast Recovery for Genuine Resolution
 
-When transitioning from negative to positive ($S_{\text{current}} < 0 \land W_{\text{destination}} > 0$), dampening is bypassed ($D = 1.0$) for 12 genuine resolution emotions (`gratitude`, `relief`, `approval`, `joy`, `optimism`, `caring`, `admiration`, `excitement`, `amusement`, `pride`, `love`, `desire`).
+When transitioning from negative to positive (`S_current < 0` and `W_destination > 0`), dampening is bypassed (`dampening_factor = 1.0`) for 12 genuine resolution emotions:
+`gratitude`, `relief`, `approval`, `joy`, `optimism`, `caring`, `admiration`, `excitement`, `amusement`, `pride`, `love`, `desire`.
 
 ---
 
-### 3.8 Dual-Horizon Call Health Aggregation ($S_{\text{health}}$)
+### 3.8 Dual-Horizon Call Health Aggregation (`S_health`)
 
 The system maintains two distinct score perspectives:
-1. **Instantaneous Live Score ($S_{\text{live}}$)**: Immediate turn-by-turn state.
-2. **Cumulative Session Average ($\overline{S}_{\text{session}}$)**: Running mean of all turn scores.
-3. **Session Call Health Score ($S_{\text{health}}$)**:
-   $$S_{\text{health}} = 0.70 \times \overline{S}_{\text{session}} + 0.30 \times S_{\text{live}}$$
+1. **Instantaneous Live Score (`S_live`)**: Immediate turn-by-turn state.
+2. **Cumulative Session Average (`S_session_avg`)**: Running mean of all turn scores.
+3. **Session Call Health Score (`S_health`)**:
+   ```python
+   S_health = (0.70 * S_session_avg) + (0.30 * S_live)
+   ```
 
-- **Escalation Alert**: Fired whenever $S_{\text{live}} \le -65.0$ OR $S_{\text{health}} \le -65.0$.
+- **Escalation Alert**: Fired whenever `S_live <= -65.0` OR `S_health <= -65.0`.
 
 ---
 
@@ -417,10 +429,11 @@ curl -X POST http://localhost:8000/api/v1/process-text \
 ## 9. Architecture Deep-Dive Reference
 
 For the comprehensive technical design specification including:
-- High-level topology diagram (`graph TB`)
-- End-to-end sequence diagram (`sequenceDiagram`)
-- State machine lifecycle diagram (`stateDiagram-v2`)
+- High-level topology diagram
+- Microservice component breakdown
+- End-to-end data flow sequence
+- Scoring engine state machine & trajectory lifecycle
 - Fault tolerance & resilience fallback matrix
 - Production containerization & scaling architecture
 
-👉 **Read [`architecture.md`](./architecture.md)**
+Read [`architecture.md`](./architecture.md)
