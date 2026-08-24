@@ -3,13 +3,13 @@ import time
 import asyncio
 from pathlib import Path
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
 
-
+# Load environment configuration from root or local .env
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
@@ -32,6 +32,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class KeywordPayload(BaseModel):
+    keyword: Optional[str] = None
+    keywords: Optional[List[str]] = None
+
 class MessagePayload(BaseModel):
     text: str
     speaker: Optional[str] = "caller"
@@ -46,6 +50,7 @@ class MessagePayload(BaseModel):
     negative_threshold_2_dampening_factor: Optional[float] = None
 
 PHRASE_SERVICE_URL = os.getenv("PHRASE_SERVICE_URL")
+PHRASE_SERVICE_BASE = PHRASE_SERVICE_URL.rsplit('/', 1)[0]
 SENTIMENT_SERVICE_URL = os.getenv("SENTIMENT_SERVICE_URL")
 SCORE_SERVICE_URL = os.getenv("SCORE_SERVICE_URL")
 
@@ -76,7 +81,51 @@ async def health_check():
         "cors_origins": origins
     }
 
+
+@app.post("/api/v1/keywords", status_code=status.HTTP_201_CREATED)
+@app.post("/api/v1/add-keyword", status_code=status.HTTP_201_CREATED)
+async def add_keywords(payload: KeywordPayload):
+    """Proxies keyword creation to the Phrase Service."""
+    client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
+    target_url = f"{PHRASE_SERVICE_BASE}/keywords"
+    try:
+        res = await client.post(target_url, json=payload.dict())
+        if res.status_code in [200, 201]:
+            return res.json()
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Phrase service unavailable: {str(e)}")
+
+@app.get("/api/v1/keywords")
+@app.get("/api/v1/admin-keywords")
+async def get_keywords():
+    """Proxies keyword retrieval from the Phrase Service."""
+    client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
+    target_url = f"{PHRASE_SERVICE_BASE}/keywords"
+    try:
+        res = await client.get(target_url)
+        if res.status_code == 200:
+            return res.json()
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Phrase service unavailable: {str(e)}")
+
+@app.delete("/api/v1/keywords/{keyword}")
+async def delete_keyword(keyword: str):
+    """Proxies keyword deletion to the Phrase Service."""
+    client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
+    target_url = f"{PHRASE_SERVICE_BASE}/keywords/{keyword}"
+    try:
+        res = await client.delete(target_url)
+        if res.status_code == 200:
+            return res.json()
+        raise HTTPException(status_code=res.status_code, detail=res.text)
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=503, detail=f"Phrase service unavailable: {str(e)}")
+
+
 @app.post("/api/v1/process-text")
+@app.post("/api/v1/process-message")
 async def process_message(payload: MessagePayload):
     try:
         start_time = time.perf_counter()

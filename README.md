@@ -2,12 +2,13 @@
 
 [![Python Version](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.95%2B-009688.svg)](https://fastapi.tiangolo.com/)
+[![MongoDB Atlas](https://img.shields.io/badge/MongoDB-Atlas-47A248.svg)](https://www.mongodb.com/atlas)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C.svg)](https://pytorch.org/)
 [![Transformers](https://img.shields.io/badge/Transformers-4.30%2B-orange.svg)](https://huggingface.co/transformers/)
 [![spaCy](https://img.shields.io/badge/spaCy-3.5%2B-09A3D5.svg)](https://spacy.io/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A high-throughput, decoupled AI microservices platform designed for real-time live call monitoring, sentiment escalation detection, and contact center conversational intelligence.
+A high-throughput, decoupled AI microservices platform designed for real-time live call monitoring, sentiment escalation detection, dynamic MongoDB keyword management, and contact center conversational intelligence.
 
 ---
 
@@ -30,12 +31,12 @@ A high-throughput, decoupled AI microservices platform designed for real-time li
 In customer support and telecommunications, identifying angry or frustrated callers in real time allows supervisors to proactively intervene, de-escalate crises, and reduce customer churn. 
 
 Traditional Exponential Moving Average (EMA) and basic lexicon-based systems suffer from critical defects:
-1. **Recency Bias**: A caller furious for 40 turns who politely says *"Okay, thank you, bye"* at turn 41 resets the score, hiding the customer friction from supervisor audits.
+1. **Recency Bias**: A caller furious for 40 turns who politely says *"Okay, thank you, bye"* at turn 41 resets the score, hiding customer friction from supervisor audits.
 2. **Score Reversal Paradox**: Low-confidence negative predictions pull already negative scores upward.
 3. **Neutral Decay Collapse**: 60–70% of call center sentences are neutral facts (e.g., account numbers). Standard EMA decays the negative score back to zero in 2 turns.
 4. **Rhetorical Question False Positives**: Panicked questions (*"Are you out of your mind?!"*) get misclassified as positive curiosity.
 
-This system solves these issues through a **Standardized Confidence-Scaled Dual-Horizon Scoring Engine** paired with deep-learning NLP microservices.
+This system solves these issues through a **Standardized Confidence-Scaled Dual-Horizon Scoring Engine** paired with deep-learning NLP microservices and persistent **MongoDB Atlas** keyword phrase tracking.
 
 ---
 
@@ -45,8 +46,8 @@ The platform is structured into four independent, decoupled microservices:
 
 ```text
 live-call-sentiment/
-├── api-gateway/            # Central orchestrator & connection pool (Port 8000)
-├── service-phrase/         # spaCy keyword extraction & Google Sheets sync (Port 8002)
+├── api-gateway/            # Central orchestrator, connection pool & proxy (Port 8000)
+├── service-phrase/         # spaCy keyword extraction & MongoDB Atlas sync (Port 8002)
 ├── service-sentiment/      # RoBERTa 28-emotion classification engine (Port 8003)
 ├── service-score/          # Dual-Horizon mathematical scoring engine (Port 8004)
 ├── .env.example            # Environment configuration template
@@ -96,11 +97,9 @@ To eliminate the **Score Reversal Paradox**, confidence ($C \in [0.0, 1.0]$) sca
 
 $$\text{confidence\_weight} = \max(0.40, C)$$
 
-$$\alpha_{\text{effective}} = \text{BASE\_ALPHA} \times D(S) \times \text{confidence\_weight}$$
+$$\alpha_{\text{effective}} = \text{BASE\_ALPHA} \times D(S) \times \text{confidence\_weight} \quad (\text{where } \text{BASE\_ALPHA} = 0.30)$$
 
 $$S_{\text{new}} = (\alpha_{\text{effective}} \times W_{\text{destination}}) + ((1.0 - \alpha_{\text{effective}}) \times S_{\text{current}})$$
-
-- **Why it matters**: If $S_{\text{current}} = -60.0$ and an angry utterance arrives with $C = 0.35$, old formulas produced $-35.0$ and pulled the score **up** towards $-54.0$. In our formula, destination is $-100.0$, so the score steps **downward** smoothly.
 
 ---
 
@@ -110,8 +109,8 @@ Replaces rigid step thresholds with a smooth continuous friction function:
 
 $$D(S) = \frac{1}{1 + \left(\frac{|S_{\text{current}}|}{\text{SATURATION\_SCALE}}\right)^2}$$
 
-- **Default Negative Scale**: $\text{SATURATION\_SCALE} = 100.0$ (allows deep natural progression into $-65.0 \to -95.0$).
-- **Positive Scale**: $\text{POSITIVE\_SATURATION\_SCALE} = 150.0$ (smoother climbing into $+80.0 \to +100.0$).
+- **Negative Escalation Scale**: $\text{SATURATION\_SCALE} = 100.0$ (allows deep natural progression into $-65.0 \to -95.0$).
+- **Positive Climbing Scale**: $\text{POSITIVE\_SATURATION\_SCALE} = 150.0$ (smooth climbing into $+80.0 \to +100.0$).
 
 ---
 
@@ -136,8 +135,6 @@ When severe friction ($S \le -65.0$ and $W \le -50.0$) persists across multiple 
 
 $$S_{\text{new}} \leftarrow S_{\text{new}} - \min\left(0.60, \frac{t}{100} \times 0.60\right)$$
 
-Enables long catastrophic calls (50+ turns) to naturally traverse down to $-95.0 \to -99.6$.
-
 ---
 
 ### 3.7 Fast Recovery for Genuine Resolution
@@ -158,22 +155,6 @@ The system maintains two distinct score perspectives:
 
 ---
 
-### 3.9 Worked Mathematical Example
-
-**Scenario**: Caller in severe friction ($S_{\text{current}} = -60.0$, Turn $8$) says: *"Ten to fourteen business days?! Are you out of your mind?!"*
-- Model Prediction: `curiosity`, Confidence: $C = 0.33$.
-
-| Parameter | Calculation | Result |
-| :--- | :--- | :--- |
-| **Destination Weight ($W_{\text{dest}}$)** | Support call re-weighting for `curiosity` | **$-10.0$** |
-| **Confidence Factor** | $\max(0.40, 0.33)$ | **$0.40$** |
-| **Dampening Factor $D(S)$** | $\frac{1}{1 + (|-60|/100)^2} = \frac{1}{1 + 0.36}$ | **$0.7353$** |
-| **Effective Alpha ($\alpha_{\text{eff}}$)** | $0.30 \times 0.7353 \times 0.40$ | **$0.0882$** |
-| **New Live Score ($S_{\text{new}}$)** | $(0.0882 \times -10.0) + (0.9118 \times -60.0)$ | **$-55.59$** |
-| **Dual-Horizon Health ($S_{\text{health}}$)** | $0.70 \times (-58.0) + 0.30 \times (-55.59)$ | **$-57.28$** |
-
----
-
 ## 4. Package Ecosystem Across Microservices
 
 Every dependency in this repository has been selected for high performance, reliability, and low overhead:
@@ -183,13 +164,14 @@ Every dependency in this repository has been selected for high performance, reli
 - **`uvicorn>=0.21.0`**: Production-grade ASGI server implementation.
 - **`httpx>=0.24.0`**: Next-generation async HTTP client with connection pooling and HTTP/2 support.
 - **`pydantic>=1.10.0`**: Runtime payload schema validation and serialization.
-- **`python-dotenv>=1.0.0`**: Automatic `.env` loading across development and production environments.
+- **`python-dotenv>=1.0.0`**: Automatic `.env` loading across runtime environments.
 
 ### 4.2 Phrase Extraction Service (`service-phrase/requirements.txt`)
 - **`spacy>=3.5.0`**: Industrial NLP library with `PhraseMatcher` for instant multi-token keyword isolation.
-- **`requests>=2.28.0`**: HTTP client for direct Google Sheets GViz CSV ingestion.
+- **`pymongo>=4.6.0`**: Official MongoDB Python driver for Atlas SRV connection and performant CRUD queries.
+- **`dnspython>=2.4.0`**: DNS SRV protocol resolution required for MongoDB Atlas cluster connection strings.
 - **`pydantic>=1.10.0`**: Request/response contracts.
-- **`python-dotenv>=1.0.0`**: Configuration management.
+- **`python-dotenv>=1.0.0`**: Dynamic database and service configuration.
 
 ### 4.3 Sentiment Service (`service-sentiment/requirements.txt`)
 - **`torch>=2.0.0`**: PyTorch backend with optimized `torch.inference_mode()` tensor execution.
@@ -201,13 +183,13 @@ Every dependency in this repository has been selected for high performance, reli
 - **`fastapi>=0.95.0`**: Sub-millisecond mathematical calculation endpoint.
 - **`uvicorn>=0.21.0`**: ASGI server.
 - **`pydantic>=1.10.0`**: Scoring request and response data contracts.
-- **`python-dotenv>=1.0.0`**: Dynamic dampening parameter overrides.
+- **`python-dotenv>=1.0.0`**: Configuration management.
 
 ---
 
 ## 5. Environment Variables & Configuration (`.env`)
 
-All configurable URLs, ports, CORS origins, and thresholds are managed via `.env`. A complete template is provided in [`.env.example`](./.env.example):
+All configurable URLs, ports, CORS origins, database connection strings, and thresholds are managed via `.env`. A complete template is provided in [`.env.example`](./.env.example):
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
@@ -219,7 +201,9 @@ All configurable URLs, ports, CORS origins, and thresholds are managed via `.env
 | **`SCORE_SERVICE_URL`** | `http://localhost:8004/calculate-score` | URL to Score Service endpoint. |
 | **`PHRASE_SERVICE_HOST`**| `0.0.0.0` | Phrase service host bind address. |
 | **`PHRASE_SERVICE_PORT`**| `8002` | Phrase service port. |
-| **`GOOGLE_SHEETS_URL`** | `https://docs.google.com/spreadsheets/d/.../edit` | Admin Google Sheet for dynamic keyword sync. |
+| **`MONGODB_URI`** | `mongodb+srv://thejaninfo_db_user:...` | MongoDB Atlas SRV connection string. |
+| **`MONGODB_DB_NAME`** | `live_call_sentiment` | MongoDB database name. |
+| **`MONGODB_COLLECTION_NAME`**| `keywords` | MongoDB collection storing monitored phrases. |
 | **`SPACY_MODEL`** | `en_core_web_sm` | spaCy model used for phrase matching. |
 | **`SENTIMENT_SERVICE_HOST`**| `0.0.0.0` | Sentiment service host bind address. |
 | **`SENTIMENT_SERVICE_PORT`**| `8003` | Sentiment service port. |
@@ -234,6 +218,7 @@ All configurable URLs, ports, CORS origins, and thresholds are managed via `.env
 
 ### 6.1 Prerequisites
 - Python 3.10, 3.11, 3.12, 3.13, or 3.14
+- MongoDB Atlas cluster or local MongoDB instance (`mongodb://localhost:27017`)
 - Git
 
 ### 6.2 Setup Python Environment
@@ -254,7 +239,7 @@ pip install -r service-score/requirements.txt
 # 3. Download spaCy English language model
 python -m spacy download en_core_web_sm
 
-# 4. Copy environment configuration
+# 4. Copy environment configuration and configure your MongoDB password
 copy .env.example .env
 ```
 
@@ -328,15 +313,75 @@ cd service-score && uvicorn main:app --port 8004 --reload
 
 ---
 
-### 7.2 Microservice Endpoints Overview
+### 7.2 Keyword Management Endpoints (MongoDB)
+
+#### Add Keyword(s): `POST /api/v1/keywords`
+- **Request (Single Keyword)**:
+  ```json
+  {
+    "keyword": "cancel account"
+  }
+  ```
+- **Request (Batch Keywords)**:
+  ```json
+  {
+    "keywords": [
+      "talk to supervisor",
+      "demand refund",
+      "terrible service"
+    ]
+  }
+  ```
+- **Response (201 Created)**:
+  ```json
+  {
+    "status": "success",
+    "message": "Successfully processed 3 keyword(s). 3 new keyword(s) stored.",
+    "added_count": 3,
+    "processed_keywords": ["talk to supervisor", "demand refund", "terrible service"]
+  }
+  ```
+
+#### Get All Keywords: `GET /api/v1/keywords`
+- **Response (200 OK)**:
+  ```json
+  {
+    "status": "success",
+    "count": 3,
+    "keywords": [
+      { "keyword": "cancel account" },
+      { "keyword": "demand refund" },
+      { "keyword": "talk to supervisor" }
+    ]
+  }
+  ```
+
+#### Delete Keyword: `DELETE /api/v1/keywords/{keyword}`
+- **Response (200 OK)**:
+  ```json
+  {
+    "status": "success",
+    "message": "Keyword 'cancel account' successfully removed.",
+    "keyword": "cancel account"
+  }
+  ```
+
+---
+
+### 7.3 Microservice Endpoints Overview
 
 | Service | Endpoint | Method | Purpose |
 | :--- | :--- | :--- | :--- |
 | **API Gateway** | `/health` | `GET` | Service mesh health & config status |
 | | `/api/v1/process-message` | `POST` | Orchestrated end-to-end processing |
-| **Phrase Service** | `/health` | `GET` | Health check & model status |
-| | `/extract-keywords` | `POST` | Exact phrase matching in text |
-| | `/admin-keywords` | `GET` | View live Google Sheets keywords |
+| | `/api/v1/keywords` | `POST` | Add monitored keywords to MongoDB |
+| | `/api/v1/keywords` | `GET` | Retrieve all keywords from MongoDB |
+| | `/api/v1/keywords/{keyword}` | `DELETE`| Remove a keyword from MongoDB |
+| **Phrase Service** | `/health` | `GET` | Health check & MongoDB connection status |
+| | `/keywords` | `POST` | Add keywords to MongoDB |
+| | `/keywords` | `GET` | Retrieve keywords from MongoDB |
+| | `/keywords/{keyword}` | `DELETE`| Delete keyword from MongoDB |
+| | `/extract-keywords` | `POST` | Match text against MongoDB keywords |
 | **Sentiment Service** | `/health` | `GET` | Model load status |
 | | `/analyze-sentiment` | `POST` | Single sentence emotion classification |
 | | `/analyze-sentiment-batch` | `POST` | Multi-sentence batch classification |
@@ -353,10 +398,18 @@ A complete set of test requests is pre-configured in [`requests.http`](./request
 # Test API Gateway Health
 curl http://localhost:8000/health
 
-# Process Test Turn
+# Add Keyword to MongoDB
+curl -X POST http://localhost:8000/api/v1/keywords \
+  -H "Content-Type: application/json" \
+  -d "{\"keyword\": \"cancel subscription\"}"
+
+# Retrieve All Keywords
+curl http://localhost:8000/api/v1/keywords
+
+# Process Test Turn with Keyword Detection
 curl -X POST http://localhost:8000/api/v1/process-message \
   -H "Content-Type: application/json" \
-  -d "{\"text\": \"I want to cancel my account right now!\", \"speaker\": \"caller\", \"previous_score\": 0.0}"
+  -d "{\"text\": \"I want to cancel my subscription right now!\", \"speaker\": \"caller\", \"previous_score\": 0.0}"
 ```
 
 ---

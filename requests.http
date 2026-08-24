@@ -51,18 +51,42 @@ Content-Type: application/json
   "negative_threshold_2_dampening_factor": 0.15
 }
 
-### 2a. Get Admin Keywords Direct from Google Spreadsheet (Apps Script)
-GET https://script.google.com/macros/s/AKfycbwcsbQlp3MMkI-OiDqRKW2lC79Vyla6eb4AbiYMBea5syILcpiTM2EsWO6tFUHB9tJkTQ/exec
+### 2a. Add Single Monitored Keyword via API Gateway (MongoDB)
+POST http://localhost:8000/api/v1/keywords
+Content-Type: application/json
 
-### 2b. Get Admin Keywords via Phrase Service
-GET http://localhost:8002/admin-keywords
+{
+  "keyword": "cancel account"
+}
 
-### 2c. Extract & Detect Admin Keywords in Text
+### 2b. Add Multiple Monitored Keywords in Batch via API Gateway (MongoDB)
+POST http://localhost:8000/api/v1/keywords
+Content-Type: application/json
+
+{
+  "keywords": [
+    "talk to supervisor",
+    "unacceptable service",
+    "demand refund",
+    "cancel subscription"
+  ]
+}
+
+### 2c. Get All Monitored Keywords via API Gateway (MongoDB)
+GET http://localhost:8000/api/v1/keywords
+
+### 2d. Delete a Monitored Keyword via API Gateway (MongoDB)
+DELETE http://localhost:8000/api/v1/keywords/cancel%20account
+
+### 2e. Direct Phrase Service - Get Keywords
+GET http://localhost:8002/keywords
+
+### 2f. Direct Phrase Service - Extract Keywords in Text
 POST http://localhost:8002/extract-keywords
 Content-Type: application/json
 
 {
-  "text": "I want to cancel my account because of terrible service."
+  "text": "I want to cancel my account and demand a refund because of unacceptable service."
 }
 
 ### 3a. Analyze Single Sentence Sentiment
