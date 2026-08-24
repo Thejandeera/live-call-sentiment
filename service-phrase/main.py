@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-# Load environment configuration
+
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
@@ -21,10 +21,10 @@ else:
 
 app = FastAPI(title="Keyword Detection Service")
 
-# Live Google Spreadsheet / Apps Script URL
+
 APPS_SCRIPT_URL = os.getenv(
     "GOOGLE_SHEETS_URL",
-    os.getenv("APPS_SCRIPT_URL", "https://docs.google.com/spreadsheets/d/1yeeIb2uFRsXWJWFXDlKSA8c0oc_FuLwapMF5OH7Sf3k/edit")
+    os.getenv("APPS_SCRIPT_URL")
 )
 SPACY_MODEL = os.getenv("SPACY_MODEL", "en_core_web_sm")
 
@@ -41,7 +41,6 @@ def fetch_live_keywords(url: str):
         match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", url)
         if match:
             sheet_id = match.group(1)
-            # Direct docs.google.com gviz endpoint (zero redirects to googleusercontent.com)
             csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv"
             res = requests.get(csv_url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
             reader = csv.reader(io.StringIO(res.text))

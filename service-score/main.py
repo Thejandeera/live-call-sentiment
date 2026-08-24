@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
-# Load environment configuration
+
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
@@ -23,9 +23,9 @@ EMOTION_WEIGHTS = {
     "joy": 70.0,
     "admiration": 65.0,
     "excitement": 60.0,
-    "surprise": 0.0,       # Neutral baseline for support call questions
+    "surprise": 0.0,     
     "amusement": 45.0,
-    "curiosity": -10.0,    # Mild friction for inquiry/rhetorical questions
+    "curiosity": -10.0,   
     "pride": 40.0,
     "love": 35.0,
     "desire": 25.0,
@@ -47,11 +47,11 @@ EMOTION_WEIGHTS = {
 
 BASE_ALPHA = 0.3
 NEUTRAL_ALPHA = 0.04
-SATURATION_SCALE = 100.0           # Scaled to 100.0 for deep natural negative escalation traversal
-POSITIVE_SATURATION_SCALE = 150.0  # Reduced friction scale for smooth positive trajectory climbing
+SATURATION_SCALE = 100.0          
+POSITIVE_SATURATION_SCALE = 150.0  
 ESCALATION_THRESHOLD = float(os.getenv("ESCALATION_THRESHOLD", "-65.0"))
 
-# Resolution & positive emotions eligible for Fast Recovery (bypassing dampening when recovering)
+
 FAST_RECOVERY_EMOTIONS = {
     "gratitude", "relief", "approval", "joy", "optimism", "caring", "admiration",
     "excitement", "amusement", "pride", "love", "desire"
@@ -114,14 +114,13 @@ async def calculate_score(payload: ScoreRequest):
     w_destination = EMOTION_WEIGHTS.get(emotion_clean, 0.0)
     w_effective = w_destination * confidence
 
-    # Confidence scales the learning rate (how much we step toward that emotion)
+  
     confidence_weight = max(0.40, confidence)
 
     dampening_factor = 1.0
 
     if emotion_clean == "neutral" or w_destination == 0.0:
-        # Crisis Neutral Clamping: when in severe crisis (<= -65.0), neutral utterances (giving facts)
-        # do not decay the crisis state back to zero.
+        
         if s_current <= ESCALATION_THRESHOLD:
             effective_alpha = 0.005
         else:
@@ -131,7 +130,7 @@ async def calculate_score(payload: ScoreRequest):
         is_recovery = (s_current < 0 and w_destination > 0) or (s_current > 0 and w_destination < 0)
         
         if is_recovery:
-            # Fast Recovery: bypasses dampening ONLY for genuine resolution emotions
+           
             if emotion_clean in FAST_RECOVERY_EMOTIONS or s_current >= 0:
                 dampening_factor = 1.0
             else:
@@ -140,7 +139,7 @@ async def calculate_score(payload: ScoreRequest):
         else:
             abs_score = abs(s_current)
             if w_destination > 0:
-                # Reduced positive friction scale: makes climbing up to +80..+100 smoother
+               
                 dampening_factor = 1.0 / (1.0 + (abs_score / POSITIVE_SATURATION_SCALE) ** 2)
             elif payload.negative_threshold_1 is not None or payload.negative_threshold_2 is not None:
                 neg_thresh_1 = payload.negative_threshold_1 if payload.negative_threshold_1 is not None else 50.0
@@ -156,18 +155,16 @@ async def calculate_score(payload: ScoreRequest):
             else:
                 dampening_factor = 1.0 / (1.0 + (abs_score / SATURATION_SCALE) ** 2)
 
-        # Mild Negative Non-Relief Rule:
-        # When caller is already in severe crisis (<= -65.0), a milder negative emotion (e.g. fear -65, annoyance -70, curiosity -10)
-        # must NEVER pull the score upward as if it were a positive relief.
+        
         if s_current <= ESCALATION_THRESHOLD and w_destination < 0 and w_destination > s_current:
             effective_alpha = 0.01
         else:
             effective_alpha = BASE_ALPHA * dampening_factor * confidence_weight
 
-    # EMA update step towards destination
+  
     s_new = (effective_alpha * w_destination) + ((1.0 - effective_alpha) * s_current)
 
-    # Sustained Crisis Duration Momentum (compounds over long calls when crisis is sustained)
+    
     if s_current <= ESCALATION_THRESHOLD and w_destination <= -50.0 and turn_count > 10:
         duration_penalty = -min(0.60, (turn_count / 100.0) * 0.60)
         s_new += duration_penalty

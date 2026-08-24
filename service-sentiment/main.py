@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from transformers import pipeline
 from dotenv import load_dotenv
 
-# Load environment configuration
+
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)

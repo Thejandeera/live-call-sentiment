@@ -9,7 +9,7 @@ from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
 
-# Load environment configuration from root or local .env
+
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
@@ -18,8 +18,8 @@ else:
 
 app = FastAPI(title="Live Call Sentiment API Gateway")
 
-# Parse CORS origins from environment variable (default: http://localhost:3000)
-raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+
+raw_origins = os.getenv("CORS_ORIGINS")
 origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 if not origins:
     origins = ["http://localhost:3000"]
@@ -45,9 +45,9 @@ class MessagePayload(BaseModel):
     negative_threshold_2: Optional[float] = None
     negative_threshold_2_dampening_factor: Optional[float] = None
 
-PHRASE_SERVICE_URL = os.getenv("PHRASE_SERVICE_URL", "http://localhost:8002/extract-keywords")
-SENTIMENT_SERVICE_URL = os.getenv("SENTIMENT_SERVICE_URL", "http://localhost:8003/analyze-sentiment")
-SCORE_SERVICE_URL = os.getenv("SCORE_SERVICE_URL", "http://localhost:8004/calculate-score")
+PHRASE_SERVICE_URL = os.getenv("PHRASE_SERVICE_URL")
+SENTIMENT_SERVICE_URL = os.getenv("SENTIMENT_SERVICE_URL")
+SCORE_SERVICE_URL = os.getenv("SCORE_SERVICE_URL")
 
 http_client: Optional[httpx.AsyncClient] = None
 
@@ -77,7 +77,6 @@ async def health_check():
     }
 
 @app.post("/api/v1/process-text")
-@app.post("/api/v1/process-message")
 async def process_message(payload: MessagePayload):
     try:
         start_time = time.perf_counter()
