@@ -217,14 +217,16 @@ All configurable URLs, ports, CORS origins, and thresholds are managed via `.env
 | **`PHRASE_SERVICE_URL`** | `http://localhost:8002/extract-keywords` | URL to Phrase Service endpoint. |
 | **`SENTIMENT_SERVICE_URL`**| `http://localhost:8003/analyze-sentiment` | URL to Sentiment Service endpoint. |
 | **`SCORE_SERVICE_URL`** | `http://localhost:8004/calculate-score` | URL to Score Service endpoint. |
+| **`PHRASE_SERVICE_HOST`**| `0.0.0.0` | Phrase service host bind address. |
+| **`PHRASE_SERVICE_PORT`**| `8002` | Phrase service port. |
 | **`GOOGLE_SHEETS_URL`** | `https://docs.google.com/spreadsheets/d/.../edit` | Admin Google Sheet for dynamic keyword sync. |
 | **`SPACY_MODEL`** | `en_core_web_sm` | spaCy model used for phrase matching. |
+| **`SENTIMENT_SERVICE_HOST`**| `0.0.0.0` | Sentiment service host bind address. |
+| **`SENTIMENT_SERVICE_PORT`**| `8003` | Sentiment service port. |
 | **`SENTIMENT_MODEL_NAME`**| `SamLowe/roberta-base-go_emotions` | Hugging Face emotion classifier repository. |
+| **`SCORE_SERVICE_HOST`** | `0.0.0.0` | Score service host bind address. |
+| **`SCORE_SERVICE_PORT`** | `8004` | Score service port. |
 | **`ESCALATION_THRESHOLD`**| `-65.0` | Alert threshold triggering supervisor escalation. |
-| **`BASE_ALPHA`** | `0.3` | Base learning rate for active emotions. |
-| **`NEUTRAL_ALPHA`** | `0.04` | Attenuated learning rate for neutral statements. |
-| **`SATURATION_SCALE`** | `100.0` | Negative logistic saturation resistance scale. |
-| **`POSITIVE_SATURATION_SCALE`** | `150.0` | Positive trajectory saturation resistance scale. |
 
 ---
 

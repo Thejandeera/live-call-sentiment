@@ -45,10 +45,10 @@ EMOTION_WEIGHTS = {
     "neutral": 0.0,
 }
 
-BASE_ALPHA = float(os.getenv("BASE_ALPHA", "0.3"))
-NEUTRAL_ALPHA = float(os.getenv("NEUTRAL_ALPHA", "0.04"))
-SATURATION_SCALE = float(os.getenv("SATURATION_SCALE", "100.0"))           # Scaled to 100.0 for deep natural negative escalation traversal
-POSITIVE_SATURATION_SCALE = float(os.getenv("POSITIVE_SATURATION_SCALE", "150.0"))  # Reduced friction scale for smooth positive trajectory climbing
+BASE_ALPHA = 0.3
+NEUTRAL_ALPHA = 0.04
+SATURATION_SCALE = 100.0           # Scaled to 100.0 for deep natural negative escalation traversal
+POSITIVE_SATURATION_SCALE = 150.0  # Reduced friction scale for smooth positive trajectory climbing
 ESCALATION_THRESHOLD = float(os.getenv("ESCALATION_THRESHOLD", "-65.0"))
 
 # Resolution & positive emotions eligible for Fast Recovery (bypassing dampening when recovering)
