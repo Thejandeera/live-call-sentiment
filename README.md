@@ -271,7 +271,7 @@ cd service-score && uvicorn main:app --port 8004 --reload
 
 ## 7. API Reference & Data Contracts
 
-### 7.1 Primary Ingress: `POST /api/v1/process-message`
+### 7.1 Primary Ingress: `POST /api/v1/process-text`
 - **Host**: `http://localhost:8000`
 - **Description**: Main ingress called by client UI or ASR audio pipeline for each conversational turn.
 
@@ -315,7 +315,7 @@ cd service-score && uvicorn main:app --port 8004 --reload
 
 ### 7.2 Keyword Management Endpoints (MongoDB)
 
-#### Add Keyword(s): `POST /api/v1/keywords`
+#### Add Keyword(s): `POST /api/v1/add-keyword`
 - **Request (Single Keyword)**:
   ```json
   {
@@ -342,7 +342,7 @@ cd service-score && uvicorn main:app --port 8004 --reload
   }
   ```
 
-#### Get All Keywords: `GET /api/v1/keywords`
+#### Get All Keywords: `GET /api/v1/admin-keywords`
 - **Response (200 OK)**:
   ```json
   {
@@ -356,7 +356,7 @@ cd service-score && uvicorn main:app --port 8004 --reload
   }
   ```
 
-#### Delete Keyword: `DELETE /api/v1/keywords/{keyword}`
+#### Delete Keyword: `DELETE /api/v1/delete-keyword/{keyword}`
 - **Response (200 OK)**:
   ```json
   {
@@ -373,14 +373,14 @@ cd service-score && uvicorn main:app --port 8004 --reload
 | Service | Endpoint | Method | Purpose |
 | :--- | :--- | :--- | :--- |
 | **API Gateway** | `/health` | `GET` | Service mesh health & config status |
-| | `/api/v1/process-message` | `POST` | Orchestrated end-to-end processing |
-| | `/api/v1/keywords` | `POST` | Add monitored keywords to MongoDB |
-| | `/api/v1/keywords` | `GET` | Retrieve all keywords from MongoDB |
-| | `/api/v1/keywords/{keyword}` | `DELETE`| Remove a keyword from MongoDB |
+| | `/api/v1/process-text` | `POST` | Orchestrated end-to-end processing |
+| | `/api/v1/add-keyword` | `POST` | Add monitored keywords to MongoDB |
+| | `/api/v1/admin-keywords` | `GET` | Retrieve all keywords from MongoDB |
+| | `/api/v1/delete-keyword/{keyword}` | `DELETE`| Remove a keyword from MongoDB |
 | **Phrase Service** | `/health` | `GET` | Health check & MongoDB connection status |
-| | `/keywords` | `POST` | Add keywords to MongoDB |
-| | `/keywords` | `GET` | Retrieve keywords from MongoDB |
-| | `/keywords/{keyword}` | `DELETE`| Delete keyword from MongoDB |
+| | `/add-keyword` | `POST` | Add keywords to MongoDB |
+| | `/admin-keywords` | `GET` | Retrieve keywords from MongoDB |
+| | `/delete-keyword/{keyword}` | `DELETE`| Delete keyword from MongoDB |
 | | `/extract-keywords` | `POST` | Match text against MongoDB keywords |
 | **Sentiment Service** | `/health` | `GET` | Model load status |
 | | `/analyze-sentiment` | `POST` | Single sentence emotion classification |
@@ -399,15 +399,15 @@ A complete set of test requests is pre-configured in [`requests.http`](./request
 curl http://localhost:8000/health
 
 # Add Keyword to MongoDB
-curl -X POST http://localhost:8000/api/v1/keywords \
+curl -X POST http://localhost:8000/api/v1/add-keyword \
   -H "Content-Type: application/json" \
   -d "{\"keyword\": \"cancel subscription\"}"
 
 # Retrieve All Keywords
-curl http://localhost:8000/api/v1/keywords
+curl http://localhost:8000/api/v1/admin-keywords
 
 # Process Test Turn with Keyword Detection
-curl -X POST http://localhost:8000/api/v1/process-message \
+curl -X POST http://localhost:8000/api/v1/process-text \
   -H "Content-Type: application/json" \
   -d "{\"text\": \"I want to cancel my subscription right now!\", \"speaker\": \"caller\", \"previous_score\": 0.0}"
 ```

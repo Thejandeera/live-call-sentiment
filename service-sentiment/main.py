@@ -55,7 +55,6 @@ def load_model():
         roberta_model = pipeline("text-classification", model=MODEL_NAME)
         print("[Sentiment Service] RoBERTa model ready.")
 
-@app.get("/")
 @app.get("/health")
 async def health_check():
     return {

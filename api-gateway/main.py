@@ -9,7 +9,7 @@ from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
 
-# Load environment configuration from root or local .env
+
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
     load_dotenv(dotenv_path=env_path)
@@ -63,7 +63,6 @@ async def shutdown_event():
     if http_client:
         await http_client.aclose()
 
-@app.get("/")
 @app.get("/health")
 async def health_check():
     return {
@@ -78,12 +77,12 @@ async def health_check():
     }
 
 
-@app.post("/api/v1/keywords", status_code=status.HTTP_201_CREATED)
+
 @app.post("/api/v1/add-keyword", status_code=status.HTTP_201_CREATED)
 async def add_keywords(payload: KeywordPayload):
     """Proxies keyword creation to the Phrase Service."""
     client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
-    target_url = f"{PHRASE_SERVICE_BASE}/keywords"
+    target_url = f"{PHRASE_SERVICE_BASE}/add-keyword"
     try:
         res = await client.post(target_url, json=payload.dict())
         if res.status_code in [200, 201]:
@@ -92,12 +91,12 @@ async def add_keywords(payload: KeywordPayload):
     except httpx.RequestError as e:
         raise HTTPException(status_code=503, detail=f"Phrase service unavailable: {str(e)}")
 
-@app.get("/api/v1/keywords")
+
 @app.get("/api/v1/admin-keywords")
 async def get_keywords():
     """Proxies keyword retrieval from the Phrase Service."""
     client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
-    target_url = f"{PHRASE_SERVICE_BASE}/keywords"
+    target_url = f"{PHRASE_SERVICE_BASE}/admin-keywords"
     try:
         res = await client.get(target_url)
         if res.status_code == 200:
@@ -106,11 +105,11 @@ async def get_keywords():
     except httpx.RequestError as e:
         raise HTTPException(status_code=503, detail=f"Phrase service unavailable: {str(e)}")
 
-@app.delete("/api/v1/keywords/{keyword}")
+@app.delete("/api/v1/delete-keyword/{keyword}")
 async def delete_keyword(keyword: str):
     """Proxies keyword deletion to the Phrase Service."""
     client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
-    target_url = f"{PHRASE_SERVICE_BASE}/keywords/{keyword}"
+    target_url = f"{PHRASE_SERVICE_BASE}/delete-keyword/{keyword}"
     try:
         res = await client.delete(target_url)
         if res.status_code == 200:
@@ -121,7 +120,6 @@ async def delete_keyword(keyword: str):
 
 
 @app.post("/api/v1/process-text")
-@app.post("/api/v1/process-message")
 async def process_message(payload: MessagePayload):
     try:
         start_time = time.perf_counter()

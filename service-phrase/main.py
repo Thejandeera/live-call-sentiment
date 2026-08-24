@@ -108,7 +108,6 @@ def fetch_stored_keywords() -> List[str]:
         return list(in_memory_keywords)
 
 
-@app.get("/")
 @app.get("/health")
 async def health_check():
     coll = get_mongo_collection()
@@ -135,7 +134,6 @@ async def health_check():
     }
 
 
-@app.post("/keywords", status_code=status.HTTP_201_CREATED)
 @app.post("/add-keyword", status_code=status.HTTP_201_CREATED)
 async def add_keywords(payload: KeywordPayload):
     """Saves new monitored keyword(s) into MongoDB."""
@@ -185,9 +183,7 @@ async def add_keywords(payload: KeywordPayload):
     }
 
 
-@app.get("/keywords")
 @app.get("/admin-keywords")
-@app.get("/get-admin-keywords")
 async def get_keywords():
     """Returns all monitored keywords from MongoDB."""
     keywords = fetch_stored_keywords()
@@ -199,7 +195,6 @@ async def get_keywords():
     }
 
 
-@app.delete("/keywords/{keyword}")
 @app.delete("/delete-keyword/{keyword}")
 async def delete_keyword(keyword: str):
     """Deletes a monitored keyword from MongoDB."""
@@ -230,7 +225,7 @@ async def delete_keyword(keyword: str):
     }
 
 
-@app.post("/extract-phrases")
+
 @app.post("/extract-keywords")
 async def extract_keywords(payload: TextPayload):
     """Analyzes text and isolates matches against keywords stored in MongoDB."""

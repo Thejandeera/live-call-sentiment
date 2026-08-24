@@ -31,11 +31,11 @@ graph TB
     end
 
     %% Flow Connections
-    Frontend -->|"POST /api/v1/process-message"| APIGateway
-    Frontend -->|"POST /api/v1/keywords (Admin)"| APIGateway
+    Frontend -->|"POST /api/v1/process-text"| APIGateway
+    Frontend -->|"POST /api/v1/add-keyword (Admin)"| APIGateway
     AudioPipeline -->|"POST /api/v1/process-text"| APIGateway
     APIGateway -->|"POST /extract-keywords"| PhraseService
-    APIGateway -->|"POST /keywords (CRUD)"| PhraseService
+    APIGateway -->|"POST /add-keyword (CRUD)"| PhraseService
     APIGateway -->|"POST /analyze-sentiment"| SentimentService
     APIGateway -->|"POST /calculate-score"| ScoreService
     PhraseService <-->|"Query & Insert Keywords"| MongoDB
@@ -97,9 +97,9 @@ flowchart LR
 - **Connection Management**: Instantiates a persistent `httpx.AsyncClient` with connection pooling (`max_keepalive_connections=20`, `max_connections=100`, `timeout=30.0s`) on application startup, eliminating TCP handshake overhead for subsequent calls.
 - **CORS Support**: Enforces secure cross-origin resource sharing configured via `CORS_ORIGINS` (defaults to `http://localhost:3000`).
 - **Keyword Proxy Endpoints**:
-  - `POST /api/v1/keywords` & `POST /api/v1/add-keyword`: Proxies keyword addition to `service-phrase`.
-  - `GET /api/v1/keywords` & `GET /api/v1/admin-keywords`: Proxies keyword fetching to `service-phrase`.
-  - `DELETE /api/v1/keywords/{keyword}`: Proxies keyword deletion to `service-phrase`.
+  - `POST /api/v1/add-keyword`: Proxies keyword addition to `service-phrase`.
+  - `GET /api/v1/admin-keywords`: Proxies keyword fetching to `service-phrase`.
+  - `DELETE /api/v1/delete-keyword/{keyword}`: Proxies keyword deletion to `service-phrase`.
 - **Resilience**: Independent error containment per microservice call. If `service-phrase` fails, sentiment and scoring continue uninterrupted; if `service-sentiment` fails, graceful neutral defaults are returned.
 
 ### 2.2 Phrase Extraction Service (`service-phrase/main.py`)
@@ -147,15 +147,15 @@ sequenceDiagram
     participant Score as Score Service (:8004)
 
     Note over User,Mongo: Phase A: Keyword Management Flow
-    User->>GW: POST /api/v1/keywords {keyword: "cancel account"}
-    GW->>Phrase: POST /keywords {keyword: "cancel account"}
+    User->>GW: POST /api/v1/add-keyword {keyword: "cancel account"}
+    GW->>Phrase: POST /add-keyword {keyword: "cancel account"}
     Phrase->>Mongo: update_one({keyword: "cancel account"}, {$setOnInsert: ...}, upsert=True)
     Mongo-->>Phrase: Acknowledged (Unique Insertion)
     Phrase-->>GW: 201 Created {status: "success", added_count: 1}
     GW-->>User: 201 Created
 
     Note over User,Score: Phase B: Real-Time Live Call Turn Processing
-    User->>GW: POST /api/v1/process-message<br/>{text: "I want to cancel my account immediately!", speaker: "caller", previous_score: -50.0}
+    User->>GW: POST /api/v1/process-text<br/>{text: "I want to cancel my account immediately!", speaker: "caller", previous_score: -50.0}
 
     par Step 1: Detect Keywords from MongoDB
         GW->>Phrase: POST /extract-keywords {text}

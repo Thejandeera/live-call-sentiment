@@ -38,7 +38,7 @@ Content-Type: application/json
 }
 
 ### 2a. Add Single Monitored Keyword via API Gateway (MongoDB)
-POST http://localhost:8000/api/v1/keywords
+POST http://localhost:8000/api/v1/add-keyword
 Content-Type: application/json
 
 {
@@ -46,7 +46,7 @@ Content-Type: application/json
 }
 
 ### 2b. Add Multiple Monitored Keywords in Batch via API Gateway (MongoDB)
-POST http://localhost:8000/api/v1/keywords
+POST http://localhost:8000/api/v1/add-keyword
 Content-Type: application/json
 
 {
@@ -59,13 +59,13 @@ Content-Type: application/json
 }
 
 ### 2c. Get All Monitored Keywords via API Gateway (MongoDB)
-GET http://localhost:8000/api/v1/keywords
+GET http://localhost:8000/api/v1/admin-keywords
 
 ### 2d. Delete a Monitored Keyword via API Gateway (MongoDB)
-DELETE http://localhost:8000/api/v1/keywords/cancel%20account
+DELETE http://localhost:8000/api/v1/delete-keyword/cancel%20account
 
 ### 2e. Direct Phrase Service - Get Keywords
-GET http://localhost:8002/keywords
+GET http://localhost:8002/admin-keywords
 
 ### 2f. Direct Phrase Service - Extract Keywords in Text
 POST http://localhost:8002/extract-keywords
