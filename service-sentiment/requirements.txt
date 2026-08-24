@@ -1,5 +1,6 @@
-fastapi
-uvicorn
-torch
-transformers
-pydantic
+fastapi>=0.95.0
+uvicorn>=0.21.0
+torch>=2.0.0
+transformers>=4.30.0
+pydantic>=1.10.0
+python-dotenv>=1.0.0

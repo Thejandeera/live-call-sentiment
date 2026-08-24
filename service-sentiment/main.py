@@ -1,10 +1,22 @@
+import os
 import torch
+from pathlib import Path
 from typing import List, Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import pipeline
+from dotenv import load_dotenv
+
+# Load environment configuration
+env_path = Path(__file__).resolve().parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()
 
 app = FastAPI(title="Sentiment & Emotion Service")
+
+MODEL_NAME = os.getenv("SENTIMENT_MODEL_NAME", os.getenv("MODEL_NAME", "SamLowe/roberta-base-go_emotions"))
 
 class TextPayload(BaseModel):
     isolated_sentence: Optional[str] = None
@@ -39,9 +51,19 @@ def categorize_emotion(emotion: str, score: float) -> str:
 def load_model():
     global roberta_model
     if roberta_model is None:
-        print("[Sentiment Service] Loading RoBERTa emotion classification model...")
-        roberta_model = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions")
+        print(f"[Sentiment Service] Loading RoBERTa model '{MODEL_NAME}'...")
+        roberta_model = pipeline("text-classification", model=MODEL_NAME)
         print("[Sentiment Service] RoBERTa model ready.")
+
+@app.get("/")
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "service-sentiment",
+        "model_name": MODEL_NAME,
+        "model_loaded": roberta_model is not None
+    }
 
 @app.post("/analyze-sentiment")
 async def analyze_sentiment(payload: TextPayload):

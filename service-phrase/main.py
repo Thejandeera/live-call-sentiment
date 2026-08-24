@@ -1,3 +1,4 @@
+import os
 import csv
 import io
 import re
@@ -5,14 +6,27 @@ import spacy
 import sys
 import subprocess
 import requests
+from pathlib import Path
 from spacy.matcher import PhraseMatcher
 from fastapi import FastAPI
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# Load environment configuration
+env_path = Path(__file__).resolve().parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()
 
 app = FastAPI(title="Keyword Detection Service")
 
 # Live Google Spreadsheet / Apps Script URL
-APPS_SCRIPT_URL = "https://docs.google.com/spreadsheets/d/1yeeIb2uFRsXWJWFXDlKSA8c0oc_FuLwapMF5OH7Sf3k/edit"
+APPS_SCRIPT_URL = os.getenv(
+    "GOOGLE_SHEETS_URL",
+    os.getenv("APPS_SCRIPT_URL", "https://docs.google.com/spreadsheets/d/1yeeIb2uFRsXWJWFXDlKSA8c0oc_FuLwapMF5OH7Sf3k/edit")
+)
+SPACY_MODEL = os.getenv("SPACY_MODEL", "en_core_web_sm")
 
 class TextPayload(BaseModel):
     transcript: str = ""
@@ -51,13 +65,24 @@ def fetch_live_keywords(url: str):
 def load_spacy():
     global nlp
     try:
-        print("[Phrase Service] Loading en_core_web_sm...")
-        nlp = spacy.load("en_core_web_sm")
+        print(f"[Phrase Service] Loading {SPACY_MODEL}...")
+        nlp = spacy.load(SPACY_MODEL)
     except OSError:
-        print("[Phrase Service] Model not found. Downloading...")
-        subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
-        nlp = spacy.load("en_core_web_sm")
-    print("[Phrase Service] Ready.")
+        print(f"[Phrase Service] Model '{SPACY_MODEL}' not found. Downloading...")
+        subprocess.run([sys.executable, "-m", "spacy", "download", SPACY_MODEL])
+        nlp = spacy.load(SPACY_MODEL)
+    print(f"[Phrase Service] {SPACY_MODEL} ready.")
+
+
+@app.get("/")
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "service-phrase",
+        "spacy_model": SPACY_MODEL,
+        "google_sheets_url": APPS_SCRIPT_URL
+    }
 
 
 @app.post("/extract-phrases")
@@ -111,6 +136,3 @@ async def get_admin_keywords():
         return {"status": "success", "keywords": remote_data}
     except Exception as e:
         return {"status": "error", "message": str(e), "keywords": []}
-
-
-

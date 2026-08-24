@@ -1,20 +1,28 @@
+import os
 import time
 import asyncio
+from pathlib import Path
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
+from dotenv import load_dotenv
+
+# Load environment configuration from root or local .env
+env_path = Path(__file__).resolve().parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()
 
 app = FastAPI(title="Live Call Sentiment API Gateway")
 
-origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "*"
-]
+# Parse CORS origins from environment variable (default: http://localhost:3000)
+raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+if not origins:
+    origins = ["http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,11 +45,11 @@ class MessagePayload(BaseModel):
     negative_threshold_2: Optional[float] = None
     negative_threshold_2_dampening_factor: Optional[float] = None
 
-PHRASE_SERVICE_URL = "http://localhost:8002/extract-keywords"
-SENTIMENT_SERVICE_URL = "http://localhost:8003/analyze-sentiment"
-SCORE_SERVICE_URL = "http://localhost:8004/calculate-score"
+PHRASE_SERVICE_URL = os.getenv("PHRASE_SERVICE_URL", "http://localhost:8002/extract-keywords")
+SENTIMENT_SERVICE_URL = os.getenv("SENTIMENT_SERVICE_URL", "http://localhost:8003/analyze-sentiment")
+SCORE_SERVICE_URL = os.getenv("SCORE_SERVICE_URL", "http://localhost:8004/calculate-score")
 
-http_client: httpx.AsyncClient = None
+http_client: Optional[httpx.AsyncClient] = None
 
 @app.on_event("startup")
 async def startup_event():
@@ -53,6 +61,20 @@ async def shutdown_event():
     global http_client
     if http_client:
         await http_client.aclose()
+
+@app.get("/")
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "api-gateway",
+        "downstream_services": {
+            "phrase_service": PHRASE_SERVICE_URL,
+            "sentiment_service": SENTIMENT_SERVICE_URL,
+            "score_service": SCORE_SERVICE_URL
+        },
+        "cors_origins": origins
+    }
 
 @app.post("/api/v1/process-text")
 @app.post("/api/v1/process-message")
@@ -163,4 +185,3 @@ async def process_message(payload: MessagePayload):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Gateway Error: {str(e)}")
-

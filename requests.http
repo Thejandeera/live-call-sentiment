@@ -1,3 +1,15 @@
+### 0a. API Gateway Health Check
+GET http://localhost:8000/health
+
+### 0b. Phrase Service Health Check
+GET http://localhost:8002/health
+
+### 0c. Sentiment Service Health Check
+GET http://localhost:8003/health
+
+### 0d. Score Service Health Check
+GET http://localhost:8004/health
+
 ### 1a. Process Direct Text Message
 POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json

@@ -1,6 +1,16 @@
+import os
+from pathlib import Path
 from typing import Optional, List
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+
+# Load environment configuration
+env_path = Path(__file__).resolve().parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+else:
+    load_dotenv()
 
 app = FastAPI(title="Live Sentiment Score Service")
 
@@ -35,11 +45,11 @@ EMOTION_WEIGHTS = {
     "neutral": 0.0,
 }
 
-BASE_ALPHA = 0.3
-NEUTRAL_ALPHA = 0.04
-SATURATION_SCALE = 100.0           # Scaled to 100.0 for deep natural negative escalation traversal
-POSITIVE_SATURATION_SCALE = 150.0  # Reduced friction scale for smooth positive trajectory climbing
-ESCALATION_THRESHOLD = -65.0
+BASE_ALPHA = float(os.getenv("BASE_ALPHA", "0.3"))
+NEUTRAL_ALPHA = float(os.getenv("NEUTRAL_ALPHA", "0.04"))
+SATURATION_SCALE = float(os.getenv("SATURATION_SCALE", "100.0"))           # Scaled to 100.0 for deep natural negative escalation traversal
+POSITIVE_SATURATION_SCALE = float(os.getenv("POSITIVE_SATURATION_SCALE", "150.0"))  # Reduced friction scale for smooth positive trajectory climbing
+ESCALATION_THRESHOLD = float(os.getenv("ESCALATION_THRESHOLD", "-65.0"))
 
 # Resolution & positive emotions eligible for Fast Recovery (bypassing dampening when recovering)
 FAST_RECOVERY_EMOTIONS = {
@@ -78,6 +88,19 @@ class ScoreResponse(BaseModel):
     turn_count: int
     session_avg_score: float
     escalation_triggered: bool
+
+
+@app.get("/")
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "service-score",
+        "base_alpha": BASE_ALPHA,
+        "neutral_alpha": NEUTRAL_ALPHA,
+        "saturation_scale": SATURATION_SCALE,
+        "escalation_threshold": ESCALATION_THRESHOLD
+    }
 
 
 @app.post("/calculate-score", response_model=ScoreResponse)
@@ -191,5 +214,3 @@ async def calculate_score(payload: ScoreRequest):
         session_avg_score=new_session_avg,
         escalation_triggered=escalation_triggered,
     )
-
-
