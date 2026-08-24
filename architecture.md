@@ -8,88 +8,13 @@ This document provides a comprehensive architectural and engineering specificati
 
 The Live Call Sentiment platform is designed around a **decoupled, asynchronous microservices architecture** optimized for high-throughput, low-latency live conversational intelligence in customer contact centers.
 
-```mermaid
-graph TB
-    subgraph Client_Layer["Client & Ingestion Layer"]
-        Frontend["Web Dashboard / Next.js Client<br/>(Live Monitor & Admin UI)"]
-        AudioPipeline["Live Audio / Telephony Stream<br/>(ASR / Transcription Engine)"]
-    end
-
-    subgraph Gateway_Layer["Gateway & Orchestration Layer"]
-        APIGateway["FastAPI API Gateway<br/>(Port 8000)<br/>- Async HTTP Connection Pool<br/>- CORS Management<br/>- Request Orchestration<br/>- Keyword Management Proxy"]
-    end
-
-    subgraph Microservices_Layer["Specialized NLP & AI Microservices"]
-        PhraseService["Phrase & Keyword Service<br/>(Port 8002)<br/>- spaCy PhraseMatcher<br/>- MongoDB Atlas Persistence"]
-        SentimentService["Sentiment & Emotion Service<br/>(Port 8003)<br/>- RoBERTa Transformer Engine<br/>- 28 GoEmotions Taxonomy"]
-        ScoreService["Live Sentiment Scoring Engine<br/>(Port 8004)<br/>- Confidence-Scaled EMA<br/>- Continuous Logistic Saturation<br/>- Dual-Horizon Health Tracking"]
-    end
-
-    subgraph Database_Layer["Database & Persistence Layer"]
-        MongoDB["MongoDB Atlas Database<br/>(Collection: keywords)<br/>- Unique Indexed Monitored Keywords"]
-        BrowserStorage["Client Session Storage<br/>(Turn History & Chart Trajectories)"]
-    end
-
-    %% Flow Connections
-    Frontend -->|"POST /api/v1/process-text"| APIGateway
-    Frontend -->|"POST /api/v1/add-keyword (Admin)"| APIGateway
-    AudioPipeline -->|"POST /api/v1/process-text"| APIGateway
-    APIGateway -->|"POST /extract-keywords"| PhraseService
-    APIGateway -->|"POST /add-keyword (CRUD)"| PhraseService
-    APIGateway -->|"POST /analyze-sentiment"| SentimentService
-    APIGateway -->|"POST /calculate-score"| ScoreService
-    PhraseService <-->|"Query & Insert Keywords"| MongoDB
-    Frontend -.->|"Local State Sync"| BrowserStorage
-
-    classDef gateway fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#ffffff;
-    classDef service fill:#065f46,stroke:#10b981,stroke-width:2px,color:#ffffff;
-    classDef client fill:#374151,stroke:#9ca3af,stroke-width:2px,color:#ffffff;
-    classDef external fill:#7c2d12,stroke:#f97316,stroke-width:2px,color:#ffffff;
-
-    class APIGateway gateway;
-    class PhraseService,SentimentService,ScoreService service;
-    class Frontend,AudioPipeline client;
-    class MongoDB,BrowserStorage external;
-```
+![High-Level Architecture Overview](resources/architecture/high-level-architecture-overview.png)
 
 ---
 
 ## 2. Microservice Topology & Component Responsibilities
 
-```mermaid
-flowchart LR
-    subgraph S1["1. API Gateway (Port 8000)"]
-        direction TB
-        G1["Ingest Transcript / Keywords Payload"] --> G2["Connection Pool (HTTPX AsyncClient)"]
-        G2 --> G3["Concurrent Microservice Dispatch"]
-        G3 --> G4["Aggregate Results & Measure Latency"]
-    end
-
-    subgraph S2["2. Phrase Service (Port 8002)"]
-        direction TB
-        P1["spaCy en_core_web_sm Pipeline"] --> P2["MongoDB Atlas Ingestion & Query"]
-        P2 --> P3["In-Memory PhraseMatcher (LOWER)"]
-        P3 --> P4["Return Detected Keyword Matches"]
-    end
-
-    subgraph S3["3. Sentiment Service (Port 8003)"]
-        direction TB
-        T1["RoBERTa GoEmotions Pipeline"] --> T2["torch.inference_mode (Zero Grad)"]
-        T2 --> T3["28-Emotion Multi-Class Classification"]
-        T3 --> T4["Categorize: Positive / Negative / Neutral"]
-    end
-
-    subgraph S4["4. Score Service (Port 8004)"]
-        direction TB
-        C1["Confidence-Scaled Step Size (alpha)"] --> C2["Continuous Logistic Saturation D(S)"]
-        C2 --> C3["Mild Negative Non-Relief & Crisis Clamping"]
-        C3 --> C4["Dual-Horizon Session Health (S_health)"]
-    end
-
-    S1 <-->|Async REST| S2
-    S1 <-->|Async REST| S3
-    S1 <-->|Async REST| S4
-```
+![Microservice Topology](resources/architecture/microservice-topology.png)
 
 ### 2.1 API Gateway (`api-gateway/main.py`)
 - **Role**: Central ingress proxy, orchestrator, and keyword management routing hub.
@@ -136,73 +61,13 @@ flowchart LR
 
 The following sequence diagram traces the complete lifecycle of both a caller conversational turn and an administrative keyword configuration update:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Supervisor / Client UI
-    participant GW as API Gateway (:8000)
-    participant Phrase as Phrase Service (:8002)
-    participant Mongo as MongoDB Atlas (:27017)
-    participant Sentiment as Sentiment Service (:8003)
-    participant Score as Score Service (:8004)
-
-    Note over User,Mongo: Phase A: Keyword Management Flow
-    User->>GW: POST /api/v1/add-keyword {keyword: "cancel account"}
-    GW->>Phrase: POST /add-keyword {keyword: "cancel account"}
-    Phrase->>Mongo: update_one({keyword: "cancel account"}, {$setOnInsert: ...}, upsert=True)
-    Mongo-->>Phrase: Acknowledged (Unique Insertion)
-    Phrase-->>GW: 201 Created {status: "success", added_count: 1}
-    GW-->>User: 201 Created
-
-    Note over User,Score: Phase B: Real-Time Live Call Turn Processing
-    User->>GW: POST /api/v1/process-text<br/>{text: "I want to cancel my account immediately!", speaker: "caller", previous_score: -50.0}
-
-    par Step 1: Detect Keywords from MongoDB
-        GW->>Phrase: POST /extract-keywords {text}
-        Phrase->>Mongo: find({}, {keyword: 1})
-        Mongo-->>Phrase: ["cancel account", ...]
-        Phrase-->>GW: {matches: ["cancel account"]}
-    and Step 2: Classify Emotion & Confidence
-        GW->>Sentiment: POST /analyze-sentiment {text}
-        Note over Sentiment: RoBERTa Transformer Inference<br/>Output: "anger", conf: 0.94
-        Sentiment-->>GW: {emotion: "anger", sentiment_category: "negative", confidence: 0.94}
-    end
-
-    GW->>Score: POST /calculate-score<br/>{emotion: "anger", confidence: 0.94, previous_score: -50.0, turn_count: 5}
-    Note over Score: Apply Confidence-Scaled Alpha<br/>Apply Logistic Dampening D(S)<br/>Calculate S_live & S_health
-    Score-->>GW: {score: -72.4, call_health_score: -66.1, trend: "Escalating", escalation_triggered: true}
-
-    GW-->>User: 200 OK<br/>{status: "success", processing_time_ms: 22.4, detected_issues: [...]}
-```
+![End-to-End Data Flow](resources/architecture/data-flow.png)
 
 ---
 
 ## 4. Scoring Engine State Machine & Trajectory Lifecycle
 
-```mermaid
-stateDiagram-v2
-    [*] --> Baseline: Session Start (S = 0.0)
-
-    state "Normal Interaction (-30.0 < S < +30.0)" as Baseline
-    state "Escalating Friction (-65.0 < S <= -30.0)" as MildFriction
-    state "Escalation Alert Triggered (S <= -65.0)" as EscalationZone
-    state "Severe Catastrophic Crisis (S <= -85.0)" as SevereCrisis
-    state "De-Escalation & Fast Recovery" as FastRecovery
-
-    Baseline --> MildFriction: Negative Utterance (annoyance, disappointment)
-    MildFriction --> EscalationZone: Consecutive Hostile Utterances (anger, disgust)
-    EscalationZone --> SevereCrisis: Sustained Negative Momentum (t > 10 turns)
-
-    SevereCrisis --> EscalationZone: Mild Negative Utterance (Clamped alpha = 0.01)
-    SevereCrisis --> FastRecovery: Genuine Resolution Emotion (relief, gratitude, D = 1.0)
-    EscalationZone --> FastRecovery: Positive Emotion (approval, joy, D = 1.0)
-    MildFriction --> FastRecovery: Positive Utterance
-    FastRecovery --> Baseline: Score climbs past -30.0 to 0.0+
-
-    Baseline --> [*]: Session Ended
-    EscalationZone --> [*]: Supervisor Intervenes / Call Ends
-    SevereCrisis --> [*]: Call Terminated
-```
+![Trajectory Lifecycle](resources/architecture/Trajectory-Lifecycle.png)
 
 ---
 
@@ -234,28 +99,7 @@ Each microservice leverages a targeted, lightweight set of packages selected for
 
 ## 6. Fault Tolerance, Resilience & Fallback Matrix
 
-```mermaid
-flowchart TD
-    Req["Incoming Utterance to API Gateway"] --> Dispatch["Dispatch Sub-Requests"]
-
-    Dispatch --> P_Call["Call service-phrase"]
-    Dispatch --> S_Call["Call service-sentiment"]
-    
-    P_Call -->|200 OK| P_Res["Keywords Found via MongoDB"]
-    P_Call -->|Timeout / Error| P_Fail["Fallback: in-memory cache or matches = [] (Non-blocking)"]
-
-    S_Call -->|200 OK| S_Res["Emotion & Confidence"]
-    S_Call -->|Timeout / Error| S_Fail["Fallback: emotion='neutral', conf=0.0"]
-
-    P_Res & P_Fail --> Aggregate["Assemble Score Payload"]
-    S_Res & S_Fail --> Aggregate
-
-    Aggregate --> C_Call["Call service-score"]
-    C_Call -->|200 OK| C_Res["Computed S_live & S_health"]
-    C_Call -->|Timeout / Error| C_Fail["Fallback: Maintain previous_score"]
-
-    C_Res & C_Fail --> Final["Return Unified Gateway JSON (200 OK)"]
-```
+![Fallback Matrix](resources/architecture/fallback-metrix.png)
 
 ---
 
@@ -263,32 +107,7 @@ flowchart TD
 
 ### 7.1 Container Mesh Topology
 
-```mermaid
-graph TD
-    subgraph Host["Docker / Kubernetes Host"]
-        subgraph ReverseProxy["Ingress Layer"]
-            Nginx["Nginx / Traefik Reverse Proxy<br/>(Port 80/443 SSL Termination)"]
-        end
-
-        subgraph ServiceMesh["Internal Bridge Network"]
-            GW_C["api-gateway Container<br/>(Port 8000)"]
-            PH_C["service-phrase Container<br/>(Port 8002)"]
-            ST_C["service-sentiment Container<br/>(Port 8003, CPU/CUDA)"]
-            SC_C["service-score Container<br/>(Port 8004)"]
-        end
-    end
-
-    subgraph CloudDatabase["Managed Database Cloud"]
-        Atlas["MongoDB Atlas Cluster<br/>(mongodb+srv://...)"]
-    end
-
-    Internet(("Public Internet / Client")) -->|HTTPS| Nginx
-    Nginx -->|Proxy Pass| GW_C
-    GW_C --> PH_C
-    GW_C --> ST_C
-    GW_C --> SC_C
-    PH_C <-->|SRV TLS| Atlas
-```
+![Containerization Architecture](resources/architecture/Containerization-Architecture.png)
 
 ### 7.2 Scaling Recommendations
 1. **API Gateway**: Stateless and I/O bound. Scale horizontally with multiple workers (`uvicorn main:app --workers 4`).
