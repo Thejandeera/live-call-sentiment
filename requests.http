@@ -37,7 +37,7 @@ Content-Type: application/json
   "previous_score": -60.0
 }
 
-### 2a. Add Single Monitored Keyword via API Gateway (MongoDB)
+### 2a. Add Single Monitored Keyword via API Gateway (PostgreSQL)
 POST http://localhost:8000/api/v1/add-keyword
 Content-Type: application/json
 
@@ -45,7 +45,7 @@ Content-Type: application/json
   "keyword": "cancel account"
 }
 
-### 2b. Add Multiple Monitored Keywords in Batch via API Gateway (MongoDB)
+### 2b. Add Multiple Monitored Keywords in Batch via API Gateway (PostgreSQL)
 POST http://localhost:8000/api/v1/add-keyword
 Content-Type: application/json
 
@@ -58,10 +58,10 @@ Content-Type: application/json
   ]
 }
 
-### 2c. Get All Monitored Keywords via API Gateway (MongoDB)
+### 2c. Get All Monitored Keywords via API Gateway (PostgreSQL)
 GET http://localhost:8000/api/v1/admin-keywords
 
-### 2d. Delete a Monitored Keyword via API Gateway (MongoDB)
+### 2d. Delete a Monitored Keyword via API Gateway (PostgreSQL)
 DELETE http://localhost:8000/api/v1/delete-keyword/cancel%20account
 
 ### 2e. Direct Phrase Service - Get Keywords

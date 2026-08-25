@@ -3,15 +3,16 @@ import sys
 import subprocess
 from pathlib import Path
 from typing import List, Optional, Union
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import spacy
 from spacy.matcher import PhraseMatcher
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
-from pymongo import MongoClient, ASCENDING
-from pymongo.errors import PyMongoError
+import psycopg2
+from psycopg2 import pool
+from psycopg2.extras import DictCursor
 from dotenv import load_dotenv
-
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
@@ -19,17 +20,18 @@ if env_path.exists():
 else:
     load_dotenv()
 
-app = FastAPI(title="Keyword & Phrase Detection Service (MongoDB)")
+app = FastAPI(title="Keyword & Phrase Detection Service (PostgreSQL)")
 
-
-MONGODB_URI = os.getenv("MONGODB_URI")
-MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME")
-MONGODB_COLLECTION_NAME = os.getenv("MONGODB_COLLECTION_NAME")
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
+POSTGRES_DB = os.getenv("POSTGRES_DB", "callIntelligence")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+POSTGRES_TABLE = os.getenv("POSTGRES_TABLE", "call_admin_keywords")
+POSTGRES_URI = os.getenv("POSTGRES_URI")
 SPACY_MODEL = os.getenv("SPACY_MODEL", "en_core_web_sm")
 
-
 in_memory_keywords = set()
-
 
 class KeywordPayload(BaseModel):
     keyword: Optional[str] = None
@@ -40,30 +42,61 @@ class TextPayload(BaseModel):
     text: Optional[str] = ""
 
 nlp = None
-mongo_client: Optional[MongoClient] = None
-keywords_collection = None
+db_pool: Optional[pool.ThreadedConnectionPool] = None
 
 
-def get_mongo_collection():
-    global mongo_client, keywords_collection
-    if keywords_collection is not None:
-        return keywords_collection
-    
-    if not MONGODB_URI or "<db_password>" in MONGODB_URI:
-        return None
+def get_connection_params():
+    if POSTGRES_URI:
+        return {"dsn": POSTGRES_URI}
+    return {
+        "host": POSTGRES_HOST,
+        "port": POSTGRES_PORT,
+        "dbname": POSTGRES_DB,
+        "user": POSTGRES_USER,
+        "password": POSTGRES_PASSWORD
+    }
+
+
+def init_db_pool():
+    global db_pool
+    if db_pool is not None:
+        return db_pool
 
     try:
-        if mongo_client is None:
-            mongo_client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-        db = mongo_client[MONGODB_DB_NAME]
-        coll = db[MONGODB_COLLECTION_NAME]
-      
-        coll.create_index([("keyword", ASCENDING)], unique=True)
-        keywords_collection = coll
-        return keywords_collection
+        params = get_connection_params()
+        db_pool = pool.ThreadedConnectionPool(minconn=1, maxconn=20, **params)
+        
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                create_table_sql = f"""
+                CREATE TABLE IF NOT EXISTS {POSTGRES_TABLE} (
+                    id SERIAL PRIMARY KEY,
+                    keyword VARCHAR(255) UNIQUE NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+                cur.execute(create_table_sql)
+            conn.commit()
+        return db_pool
     except Exception as e:
-        print(f"[Phrase Service] Warning: Unable to connect to MongoDB ({e}). Operating in in-memory fallback mode.")
+        print(f"[Phrase Service] Warning: Unable to connect to PostgreSQL database '{POSTGRES_DB}' ({e}). Operating in in-memory fallback mode.")
+        db_pool = None
         return None
+
+
+@contextmanager
+def get_db_connection():
+    global db_pool
+    if db_pool is None:
+        init_db_pool()
+    if db_pool is None:
+        raise HTTPException(status_code=503, detail="Database connection pool unavailable.")
+    
+    conn = db_pool.getconn()
+    try:
+        yield conn
+    finally:
+        db_pool.putconn(conn)
 
 
 @app.on_event("startup")
@@ -79,56 +112,57 @@ def startup_event():
         nlp = spacy.load(SPACY_MODEL)
     print(f"[Phrase Service] {SPACY_MODEL} ready.")
 
-    
-    coll = get_mongo_collection()
-    if coll is not None:
-        print(f"[Phrase Service] Connected to MongoDB database '{MONGODB_DB_NAME}', collection '{MONGODB_COLLECTION_NAME}'.")
+    pool_instance = init_db_pool()
+    if pool_instance is not None:
+        print(f"[Phrase Service] Connected to PostgreSQL database '{POSTGRES_DB}', table '{POSTGRES_TABLE}'.")
     else:
-        print("[Phrase Service] MongoDB URI not fully configured or pending credentials. Ready with fallback.")
+        print("[Phrase Service] PostgreSQL not fully configured or offline. Ready with fallback.")
 
 
 @app.on_event("shutdown")
 def shutdown_event():
-    global mongo_client
-    if mongo_client:
-        mongo_client.close()
+    global db_pool
+    if db_pool:
+        db_pool.closeall()
+        print("[Phrase Service] PostgreSQL connection pool closed.")
 
 
 def fetch_stored_keywords() -> List[str]:
-    """Retrieves all active keywords from MongoDB or in-memory fallback."""
-    coll = get_mongo_collection()
-    if coll is not None:
-        try:
-            cursor = coll.find({}, {"keyword": 1, "_id": 0})
-            return [doc["keyword"] for doc in cursor if "keyword" in doc and doc["keyword"]]
-        except Exception as e:
-            print(f"[Phrase Service] Error querying MongoDB keywords: {e}")
-            return list(in_memory_keywords)
-    else:
+    """Retrieves all active keywords from PostgreSQL or in-memory fallback."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT keyword FROM {POSTGRES_TABLE} ORDER BY keyword ASC;")
+                rows = cur.fetchall()
+                return [row[0] for row in rows if row and row[0]]
+    except Exception as e:
+        print(f"[Phrase Service] Fallback retrieving keywords: {e}")
         return list(in_memory_keywords)
 
 
 @app.get("/health")
 async def health_check():
-    coll = get_mongo_collection()
     db_connected = False
     db_count = 0
-    if coll is not None:
-        try:
-            db_count = coll.count_documents({})
-            db_connected = True
-        except Exception:
-            db_connected = False
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT COUNT(*) FROM {POSTGRES_TABLE};")
+                row = cur.fetchone()
+                db_count = row[0] if row else 0
+                db_connected = True
+    except Exception:
+        db_connected = False
 
     return {
         "status": "healthy",
         "service": "service-phrase",
         "spacy_model": SPACY_MODEL,
         "database": {
-            "type": "mongodb",
+            "type": "postgresql",
             "connected": db_connected,
-            "database_name": MONGODB_DB_NAME,
-            "collection": MONGODB_COLLECTION_NAME,
+            "database_name": POSTGRES_DB,
+            "table_name": POSTGRES_TABLE,
             "total_keywords": db_count if db_connected else len(in_memory_keywords)
         }
     }
@@ -136,7 +170,7 @@ async def health_check():
 
 @app.post("/add-keyword", status_code=status.HTTP_201_CREATED)
 async def add_keywords(payload: KeywordPayload):
-    """Saves new monitored keyword(s) into MongoDB."""
+    """Saves new monitored keyword(s) into PostgreSQL call_admin_keywords."""
     words_to_add = []
     if payload.keyword and payload.keyword.strip():
         words_to_add.append(payload.keyword.strip().lower())
@@ -148,28 +182,25 @@ async def add_keywords(payload: KeywordPayload):
     if not words_to_add:
         raise HTTPException(status_code=400, detail="No valid keyword provided. Supply 'keyword' or 'keywords'.")
 
-  
     words_to_add = list(set(words_to_add))
-    
-    coll = get_mongo_collection()
     added_count = 0
-    
-    if coll is not None:
-        try:
-            for word in words_to_add:
-                result = coll.update_one(
-                    {"keyword": word},
-                    {"$setOnInsert": {
-                        "keyword": word,
-                        "created_at": datetime.now(timezone.utc).isoformat()
-                    }},
-                    upsert=True
-                )
-                if result.upserted_id is not None:
-                    added_count += 1
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"MongoDB insertion error: {str(e)}")
-    else:
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                for word in words_to_add:
+                    insert_sql = f"""
+                    INSERT INTO {POSTGRES_TABLE} (keyword)
+                    VALUES (%s)
+                    ON CONFLICT (keyword) DO NOTHING
+                    RETURNING id;
+                    """
+                    cur.execute(insert_sql, (word,))
+                    res = cur.fetchone()
+                    if res is not None:
+                        added_count += 1
+            conn.commit()
+    except Exception as e:
         for word in words_to_add:
             if word not in in_memory_keywords:
                 in_memory_keywords.add(word)
@@ -185,7 +216,7 @@ async def add_keywords(payload: KeywordPayload):
 
 @app.get("/admin-keywords")
 async def get_keywords():
-    """Returns all monitored keywords from MongoDB."""
+    """Returns all monitored keywords from PostgreSQL."""
     keywords = fetch_stored_keywords()
     formatted = [{"keyword": kw} for kw in sorted(keywords)]
     return {
@@ -197,20 +228,20 @@ async def get_keywords():
 
 @app.delete("/delete-keyword/{keyword}")
 async def delete_keyword(keyword: str):
-    """Deletes a monitored keyword from MongoDB."""
+    """Deletes a monitored keyword from PostgreSQL."""
     clean_kw = keyword.strip().lower()
     if not clean_kw:
         raise HTTPException(status_code=400, detail="Invalid keyword provided.")
 
-    coll = get_mongo_collection()
     deleted = False
-    if coll is not None:
-        try:
-            result = coll.delete_one({"keyword": clean_kw})
-            deleted = result.deleted_count > 0
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"MongoDB deletion error: {str(e)}")
-    else:
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                delete_sql = f"DELETE FROM {POSTGRES_TABLE} WHERE LOWER(keyword) = %s;"
+                cur.execute(delete_sql, (clean_kw,))
+                deleted = cur.rowcount > 0
+            conn.commit()
+    except Exception as e:
         if clean_kw in in_memory_keywords:
             in_memory_keywords.remove(clean_kw)
             deleted = True
@@ -225,10 +256,9 @@ async def delete_keyword(keyword: str):
     }
 
 
-
 @app.post("/extract-keywords")
 async def extract_keywords(payload: TextPayload):
-    """Analyzes text and isolates matches against keywords stored in MongoDB."""
+    """Analyzes text and isolates matches against keywords stored in PostgreSQL."""
     text_content = payload.text if payload.text else payload.transcript
     if not text_content or not text_content.strip():
         return {"matches": [], "keywords": []}

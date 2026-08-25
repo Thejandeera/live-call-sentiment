@@ -2,13 +2,13 @@
 
 [![Python Version](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.95%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![MongoDB Atlas](https://img.shields.io/badge/MongoDB-Atlas-47A248.svg)](https://www.mongodb.com/atlas)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17%2B-336791.svg)](https://www.postgresql.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C.svg)](https://pytorch.org/)
 [![Transformers](https://img.shields.io/badge/Transformers-4.30%2B-orange.svg)](https://huggingface.co/transformers/)
 [![spaCy](https://img.shields.io/badge/spaCy-3.5%2B-09A3D5.svg)](https://spacy.io/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A high-throughput, decoupled AI microservices platform designed for real-time live call monitoring, sentiment escalation detection, dynamic MongoDB keyword management, and contact center conversational intelligence.
+A high-throughput, decoupled AI microservices platform designed for real-time live call monitoring, sentiment escalation detection, dynamic PostgreSQL keyword management, and contact center conversational intelligence.
 
 ---
 
@@ -36,7 +36,7 @@ Traditional Exponential Moving Average (EMA) and basic lexicon-based systems suf
 3. **Neutral Decay Collapse**: 60–70% of call center sentences are neutral facts (e.g., account numbers). Standard EMA decays the negative score back to zero in 2 turns.
 4. **Rhetorical Question False Positives**: Panicked questions (*"Are you out of your mind?!"*) get misclassified as positive curiosity.
 
-This system solves these issues through a **Standardized Confidence-Scaled Dual-Horizon Scoring Engine** paired with deep-learning NLP microservices and persistent **MongoDB Atlas** keyword phrase tracking.
+This system solves these issues through a **Standardized Confidence-Scaled Dual-Horizon Scoring Engine** paired with deep-learning NLP microservices and persistent **PostgreSQL** (`callIntelligence` database, `call_admin_keywords` table) keyword phrase tracking.
 
 ---
 
@@ -47,7 +47,7 @@ The platform is structured into four independent, decoupled microservices:
 ```text
 live-call-sentiment/
 ├── api-gateway/            # Central orchestrator, connection pool & proxy (Port 8000)
-├── service-phrase/         # spaCy keyword extraction & MongoDB Atlas sync (Port 8002)
+├── service-phrase/         # spaCy keyword extraction & PostgreSQL sync (Port 8002)
 ├── service-sentiment/      # RoBERTa 28-emotion classification engine (Port 8003)
 ├── service-score/          # Dual-Horizon mathematical scoring engine (Port 8004)
 ├── .env.example            # Environment configuration template
@@ -180,8 +180,7 @@ Every dependency in this repository has been selected for high performance, reli
 
 ### 4.2 Phrase Extraction Service (`service-phrase/requirements.txt`)
 - **`spacy>=3.5.0`**: Industrial NLP library with `PhraseMatcher` for instant multi-token keyword isolation.
-- **`pymongo>=4.6.0`**: Official MongoDB Python driver for Atlas SRV connection and performant CRUD queries.
-- **`dnspython>=2.4.0`**: DNS SRV protocol resolution required for MongoDB Atlas cluster connection strings.
+- **`psycopg2-binary>=2.9.9`**: Production PostgreSQL database adapter supporting connection pooling and parameterized queries.
 - **`pydantic>=1.10.0`**: Request/response contracts.
 - **`python-dotenv>=1.0.0`**: Dynamic database and service configuration.
 
@@ -201,7 +200,7 @@ Every dependency in this repository has been selected for high performance, reli
 
 ## 5. Environment Variables & Configuration (`.env`)
 
-All configurable URLs, ports, CORS origins, database connection strings, and thresholds are managed via `.env`. A complete template is provided in [`.env.example`](./.env.example):
+All configurable URLs, ports, CORS origins, PostgreSQL database credentials, and thresholds are managed via `.env`. A complete template is provided in [`.env.example`](./.env.example):
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
@@ -213,9 +212,12 @@ All configurable URLs, ports, CORS origins, database connection strings, and thr
 | **`SCORE_SERVICE_URL`** | `http://localhost:8004/calculate-score` | URL to Score Service endpoint. |
 | **`PHRASE_SERVICE_HOST`**| `0.0.0.0` | Phrase service host bind address. |
 | **`PHRASE_SERVICE_PORT`**| `8002` | Phrase service port. |
-| **`MONGODB_URI`** | `mongodb+srv://thejaninfo_db_user:...` | MongoDB Atlas SRV connection string. |
-| **`MONGODB_DB_NAME`** | `live_call_sentiment` | MongoDB database name. |
-| **`MONGODB_COLLECTION_NAME`**| `keywords` | MongoDB collection storing monitored phrases. |
+| **`POSTGRES_HOST`** | `localhost` | PostgreSQL server hostname / IP. |
+| **`POSTGRES_PORT`** | `5432` | PostgreSQL port. |
+| **`POSTGRES_DB`** | `callIntelligence` | PostgreSQL database name. |
+| **`POSTGRES_USER`** | `postgres` | PostgreSQL username. |
+| **`POSTGRES_PASSWORD`** | `postgres` | PostgreSQL password. |
+| **`POSTGRES_TABLE`** | `call_admin_keywords` | Table storing monitored phrases. |
 | **`SPACY_MODEL`** | `en_core_web_sm` | spaCy model used for phrase matching. |
 | **`SENTIMENT_SERVICE_HOST`**| `0.0.0.0` | Sentiment service host bind address. |
 | **`SENTIMENT_SERVICE_PORT`**| `8003` | Sentiment service port. |
@@ -230,7 +232,7 @@ All configurable URLs, ports, CORS origins, database connection strings, and thr
 
 ### 6.1 Prerequisites
 - Python 3.10, 3.11, 3.12, 3.13, or 3.14
-- MongoDB Atlas cluster or local MongoDB instance (`mongodb://localhost:27017`)
+- PostgreSQL 14+ (e.g., PostgreSQL 17 with `callIntelligence` database)
 - Git
 
 ### 6.2 Setup Python Environment
@@ -251,7 +253,7 @@ pip install -r service-score/requirements.txt
 # 3. Download spaCy English language model
 python -m spacy download en_core_web_sm
 
-# 4. Copy environment configuration and configure your MongoDB password
+# 4. Copy environment configuration and configure your PostgreSQL password
 copy .env.example .env
 ```
 
@@ -325,7 +327,7 @@ cd service-score && uvicorn main:app --port 8004 --reload
 
 ---
 
-### 7.2 Keyword Management Endpoints (MongoDB)
+### 7.2 Keyword Management Endpoints (PostgreSQL)
 
 #### Add Keyword(s): `POST /api/v1/add-keyword`
 - **Request (Single Keyword)**:
@@ -386,14 +388,14 @@ cd service-score && uvicorn main:app --port 8004 --reload
 | :--- | :--- | :--- | :--- |
 | **API Gateway** | `/health` | `GET` | Service mesh health & config status |
 | | `/api/v1/process-text` | `POST` | Orchestrated end-to-end processing |
-| | `/api/v1/add-keyword` | `POST` | Add monitored keywords to MongoDB |
-| | `/api/v1/admin-keywords` | `GET` | Retrieve all keywords from MongoDB |
-| | `/api/v1/delete-keyword/{keyword}` | `DELETE`| Remove a keyword from MongoDB |
-| **Phrase Service** | `/health` | `GET` | Health check & MongoDB connection status |
-| | `/add-keyword` | `POST` | Add keywords to MongoDB |
-| | `/admin-keywords` | `GET` | Retrieve keywords from MongoDB |
-| | `/delete-keyword/{keyword}` | `DELETE`| Delete keyword from MongoDB |
-| | `/extract-keywords` | `POST` | Match text against MongoDB keywords |
+| | `/api/v1/add-keyword` | `POST` | Add monitored keywords to PostgreSQL |
+| | `/api/v1/admin-keywords` | `GET` | Retrieve all keywords from PostgreSQL |
+| | `/api/v1/delete-keyword/{keyword}` | `DELETE`| Remove a keyword from PostgreSQL |
+| **Phrase Service** | `/health` | `GET` | Health check & PostgreSQL connection status |
+| | `/add-keyword` | `POST` | Add keywords to PostgreSQL |
+| | `/admin-keywords` | `GET` | Retrieve keywords from PostgreSQL |
+| | `/delete-keyword/{keyword}` | `DELETE`| Delete keyword from PostgreSQL |
+| | `/extract-keywords` | `POST` | Match text against PostgreSQL keywords |
 | **Sentiment Service** | `/health` | `GET` | Model load status |
 | | `/analyze-sentiment` | `POST` | Single sentence emotion classification |
 | | `/analyze-sentiment-batch` | `POST` | Multi-sentence batch classification |
@@ -410,7 +412,7 @@ A complete set of test requests is pre-configured in [`requests.http`](./request
 # Test API Gateway Health
 curl http://localhost:8000/health
 
-# Add Keyword to MongoDB
+# Add Keyword to PostgreSQL
 curl -X POST http://localhost:8000/api/v1/add-keyword \
   -H "Content-Type: application/json" \
   -d "{\"keyword\": \"cancel subscription\"}"

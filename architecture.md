@@ -28,12 +28,12 @@ The Live Call Sentiment platform is designed around a **decoupled, asynchronous 
 - **Resilience**: Independent error containment per microservice call. If `service-phrase` fails, sentiment and scoring continue uninterrupted; if `service-sentiment` fails, graceful neutral defaults are returned.
 
 ### 2.2 Phrase Extraction Service (`service-phrase/main.py`)
-- **Role**: High-speed keyword identification, sentence phrase matching, and MongoDB keyword database operations.
+- **Role**: High-speed keyword identification, sentence phrase matching, and PostgreSQL keyword database operations.
 - **Port**: `8002` (configurable via `PHRASE_SERVICE_PORT`).
 - **Engine**: spaCy (`en_core_web_sm`) using `PhraseMatcher(nlp.vocab, attr="LOWER")`.
-- **Database Storage (MongoDB Atlas)**:
-  - Connects to MongoDB cluster via `MONGODB_URI`.
-  - Database: `MONGODB_DB_NAME` (default: `live_call_sentiment`), Collection: `MONGODB_COLLECTION_NAME` (default: `keywords`).
+- **Database Storage (PostgreSQL)**:
+  - Connects to PostgreSQL server (database: `callIntelligence`, table: `call_admin_keywords`).
+  - Thread-safe connection pool (`ThreadedConnectionPool` via `psycopg2-binary`).
   - Maintains a unique index on the `keyword` field to prevent duplicate phrase records.
   - Automatically loads stored keywords into `PhraseMatcher` for real-time text analysis.
   - Includes graceful in-memory fallback if the database connection is initializing or offline.
@@ -83,10 +83,9 @@ Each microservice leverages a targeted, lightweight set of packages selected for
 | | `pydantic` | `>=1.10.0` | Data parsing, type enforcement, and payload validation. |
 | | `python-dotenv` | `>=1.0.0` | Environment variable parsing and `.env` file management across runtime contexts. |
 | **Phrase Service** | `spacy` | `>=3.5.0` | Industrial-strength NLP library providing exact, efficient multi-token `PhraseMatcher`. |
-| | `pymongo` | `>=4.6.0` | Official MongoDB Python driver for performant CRUD operations, connection pooling, and Atlas support. |
-| | `dnspython` | `>=2.4.0` | DNS SRV protocol resolution required for MongoDB Atlas connection strings (`mongodb+srv://`). |
+| | `psycopg2-binary`| `>=2.9.9` | Production PostgreSQL driver supporting connection pooling and parameterized SQL queries. |
 | | `pydantic` | `>=1.10.0` | Request and response schema validation. |
-| | `python-dotenv` | `>=1.0.0` | Dynamic configuration of MongoDB URI, database, and collection names. |
+| | `python-dotenv` | `>=1.0.0` | Dynamic configuration of PostgreSQL host, port, database, user, password, and table names. |
 | **Sentiment Service**| `torch` | `>=2.0.0` | Deep learning backend providing optimized tensor math and GPU/CPU inference kernels. |
 | | `transformers` | `>=4.30.0` | Hugging Face pipeline abstraction for loading pre-trained RoBERTa architectures. |
 | | `pydantic` | `>=1.10.0` | Batch payload structuring and response serialization. |
@@ -111,6 +110,6 @@ Each microservice leverages a targeted, lightweight set of packages selected for
 
 ### 7.2 Scaling Recommendations
 1. **API Gateway**: Stateless and I/O bound. Scale horizontally with multiple workers (`uvicorn main:app --workers 4`).
-2. **Phrase Service**: CPU bound during startup; in-memory lookup during runtime. MongoDB connection pooling handles high concurrent read/write queries.
+2. **Phrase Service**: CPU bound during startup; in-memory lookup during runtime. PostgreSQL connection pooling handles high concurrent read/write queries.
 3. **Sentiment Service**: Compute/RAM bound. When running on CPU, allocate at least 2GB RAM per instance; for high-concurrency environments (>100 req/sec), deploy on an NVIDIA T4/A10 GPU with TensorRT or ONNX Runtime acceleration.
 4. **Score Service**: Pure mathematical operations (approx 0.5ms latency). A single instance easily handles >2,000 req/sec.
