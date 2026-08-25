@@ -212,8 +212,6 @@ async def process_message(payload: MessagePayload):
                 "emotion": emotion,
                 "confidence": confidence,
                 "sentiment_category": sentiment_category,
-                "final_score": calculated_score,
-                "score": calculated_score,
                 "live_score": calculated_score
             }]
         }
