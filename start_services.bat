@@ -4,7 +4,7 @@ echo Starting Live Call Sentiment Microservices...
 echo ===================================================
 
 REM Start API Gateway (Port 8000)
-start "API Gateway" cmd /k "call venv\Scripts\activate && cd api-gateway && uvicorn main:app --port 8000 --reload"
+start "API Gateway" cmd /k "call venv\Scripts\activate && cd api-gateway && uvicorn main:app --port 3000 --reload"
 
 REM Start Phrase Extraction Service (Port 8002)
 start "Phrase Service" cmd /k "call venv\Scripts\activate && cd service-phrase && uvicorn main:app --port 8002 --reload"

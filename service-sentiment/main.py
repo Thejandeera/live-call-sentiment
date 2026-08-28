@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import pipeline
 from dotenv import load_dotenv
-
+from audit_logger import AuditLoggingMiddleware
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
@@ -15,6 +15,8 @@ else:
     load_dotenv()
 
 app = FastAPI(title="Sentiment & Emotion Service")
+
+app.add_middleware(AuditLoggingMiddleware, service_name="service-sentiment")
 
 MODEL_NAME = os.getenv("SENTIMENT_MODEL_NAME", os.getenv("MODEL_NAME", "SamLowe/roberta-base-go_emotions"))
 

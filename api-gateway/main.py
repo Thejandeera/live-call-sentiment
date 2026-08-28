@@ -3,12 +3,12 @@ import time
 import asyncio
 from pathlib import Path
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import httpx
 from dotenv import load_dotenv
-
+from audit_logger import AuditLoggingMiddleware
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
@@ -18,6 +18,7 @@ else:
 
 app = FastAPI(title="Live Call Sentiment API Gateway")
 
+app.add_middleware(AuditLoggingMiddleware, service_name="api-gateway")
 
 raw_origins = os.getenv("CORS_ORIGINS")
 origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
@@ -79,12 +80,12 @@ async def health_check():
 
 
 @app.post("/api/v1/add-keyword", status_code=status.HTTP_201_CREATED)
-async def add_keywords(payload: KeywordPayload):
-    """Proxies keyword creation to the Phrase Service."""
+async def add_keywords(payload: KeywordPayload, request: Request):
     client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
     target_url = f"{PHRASE_SERVICE_BASE}/add-keyword"
+    headers = {"X-Correlation-ID": getattr(request.state, "correlation_id", "")}
     try:
-        res = await client.post(target_url, json=payload.dict())
+        res = await client.post(target_url, json=payload.dict(), headers=headers)
         if res.status_code in [200, 201]:
             return res.json()
         raise HTTPException(status_code=res.status_code, detail=res.text)
@@ -93,12 +94,12 @@ async def add_keywords(payload: KeywordPayload):
 
 
 @app.get("/api/v1/admin-keywords")
-async def get_keywords():
-    """Proxies keyword retrieval from the Phrase Service."""
+async def get_keywords(request: Request):
     client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
     target_url = f"{PHRASE_SERVICE_BASE}/admin-keywords"
+    headers = {"X-Correlation-ID": getattr(request.state, "correlation_id", "")}
     try:
-        res = await client.get(target_url)
+        res = await client.get(target_url, headers=headers)
         if res.status_code == 200:
             return res.json()
         raise HTTPException(status_code=res.status_code, detail=res.text)
@@ -106,12 +107,12 @@ async def get_keywords():
         raise HTTPException(status_code=503, detail=f"Phrase service unavailable: {str(e)}")
 
 @app.delete("/api/v1/delete-keyword/{keyword}")
-async def delete_keyword(keyword: str):
-    """Proxies keyword deletion to the Phrase Service."""
+async def delete_keyword(keyword: str, request: Request):
     client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
     target_url = f"{PHRASE_SERVICE_BASE}/delete-keyword/{keyword}"
+    headers = {"X-Correlation-ID": getattr(request.state, "correlation_id", "")}
     try:
-        res = await client.delete(target_url)
+        res = await client.delete(target_url, headers=headers)
         if res.status_code == 200:
             return res.json()
         raise HTTPException(status_code=res.status_code, detail=res.text)
@@ -120,10 +121,12 @@ async def delete_keyword(keyword: str):
 
 
 @app.post("/api/v1/process-text")
-async def process_message(payload: MessagePayload):
+async def process_message(payload: MessagePayload, request: Request):
     try:
         start_time = time.perf_counter()
         client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
+        correlation_id = getattr(request.state, "correlation_id", "")
+        downstream_headers = {"X-Correlation-ID": correlation_id}
         
         text = payload.text.strip()
         speaker = payload.speaker if payload.speaker in ["agent", "caller"] else "caller"
@@ -138,7 +141,7 @@ async def process_message(payload: MessagePayload):
 
         detected_keywords = []
         try:
-            phrase_res = await client.post(PHRASE_SERVICE_URL, json={"text": text})
+            phrase_res = await client.post(PHRASE_SERVICE_URL, json={"text": text}, headers=downstream_headers)
             if phrase_res.status_code == 200:
                 detected_keywords = phrase_res.json().get("keywords", phrase_res.json().get("matches", []))
         except Exception as e:
@@ -148,7 +151,7 @@ async def process_message(payload: MessagePayload):
         sentiment_category = "neutral"
         confidence = 0.0
         try:
-            sentiment_res = await client.post(SENTIMENT_SERVICE_URL, json={"text": text})
+            sentiment_res = await client.post(SENTIMENT_SERVICE_URL, json={"text": text}, headers=downstream_headers)
             if sentiment_res.status_code == 200:
                 s_data = sentiment_res.json()
                 emotion = s_data.get("emotion", "neutral")
@@ -192,7 +195,8 @@ async def process_message(payload: MessagePayload):
         try:
             score_res = await client.post(
                 SCORE_SERVICE_URL,
-                json=score_req_payload
+                json=score_req_payload,
+                headers=downstream_headers
             )
             if score_res.status_code == 200:
                 score_details = score_res.json()

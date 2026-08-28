@@ -13,6 +13,7 @@ import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import DictCursor
 from dotenv import load_dotenv
+from audit_logger import AuditLoggingMiddleware
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
@@ -21,6 +22,8 @@ else:
     load_dotenv()
 
 app = FastAPI(title="Keyword & Phrase Detection Service (PostgreSQL)")
+
+app.add_middleware(AuditLoggingMiddleware, service_name="service-phrase")
 
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))

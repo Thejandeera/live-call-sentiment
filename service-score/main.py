@@ -4,7 +4,7 @@ from typing import Optional, List
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-
+from audit_logger import AuditLoggingMiddleware
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
@@ -13,6 +13,8 @@ else:
     load_dotenv()
 
 app = FastAPI(title="Live Sentiment Score Service")
+
+app.add_middleware(AuditLoggingMiddleware, service_name="service-score")
 
 EMOTION_WEIGHTS = {
     "gratitude": 100.0,
