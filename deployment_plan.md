@@ -1,6 +1,8 @@
-# Deployment Plan
+# Local Docker Deployment Plan
 
-A step-by-step guide to building, running, and testing the **Live Call Sentiment Analysis & Monitoring Platform** using standalone Docker containers and AWS Environment Manager (Parameter Store / Secrets Manager / ECS).
+A step-by-step guide to building, running, and testing the **Live Call Sentiment Analysis & Monitoring Platform** using standalone Docker containers with local environment configuration (`.env`) and host log synchronization.
+
+For AWS production deployment (ECR, ECS Fargate, AWS Secrets Manager, SSM Parameter Store), see [`cloud-deployment-plan.md`](./cloud-deployment-plan.md).
 
 ---
 
@@ -12,20 +14,15 @@ A step-by-step guide to building, running, and testing the **Live Call Sentiment
 | **service-phrase** | `8002` | spaCy keyword detection & PostgreSQL sync | 1 vCPU, 1 GB RAM |
 | **service-sentiment** | `8003` | RoBERTa 28-emotion classification engine | 2 vCPU, 2-4 GB RAM |
 | **service-score** | `8004` | Dual-Horizon mathematical scoring engine | 1 vCPU, 512 MB RAM |
-| **PostgreSQL** | `5432` | Relational database (`callIntelligence`) | AWS RDS / Docker container |
+| **PostgreSQL** | `5432` | Relational database (`callIntelligence`) | Local Docker container or cloud DB |
 
 ---
 
 ## 2. Environment Variables & Logging Strategy
 
 - **Zero Hardcoded Secrets/Envs**: Dockerfiles never contain hardcoded `ENV` directives. All configurations are supplied at runtime.
-- **Local Testing**:
-  - **Environment Variables**: Injected via Docker `--env-file .env` or `-e KEY=VALUE`.
-  - **Audit Logging Sync**: By default, Docker container filesystems are isolated. Using a bind mount (`-v "${PWD}/logs:/app/logs"`) and setting `-e LOG_DIR=/app/logs` maps the container's log directory directly to the host machine's `logs/` directory so you can inspect audit logs in real-time in your IDE.
-- **AWS Production**:
-  - **Secrets**: Injected via **AWS Secrets Manager** (passwords, tokens).
-  - **Configurations**: Injected via **AWS Systems Manager Parameter Store** (URLs, ports, flags).
-  - **Logging**: Streamed directly via stdout to **AWS CloudWatch Logs** (or persisted to EFS if file audits are required).
+- **Environment Variables**: Injected into containers via Docker `--env-file .env` (or `-e KEY=VALUE`).
+- **Host Audit Logging Sync**: By default, Docker container filesystems are isolated. Using a bind mount (`-v "${PWD}/logs:/app/logs"`) and setting `-e LOG_DIR=/app/logs` maps the container's log directory directly to the host machine's `logs/` directory so you can inspect audit logs in real-time in your IDE.
 
 ---
 
@@ -156,46 +153,15 @@ curl -X POST http://localhost:8000/api/v1/process-text \
 
 ---
 
-## 6. AWS Cloud Deployment (ECR + ECS Fargate + AWS Environment Manager)
+## 6. AWS Cloud Deployment
 
-A quick guide to deploying the microservices to AWS using ECR, ECS Fargate, AWS Secrets Manager, and SSM Parameter Store.
+For deploying to AWS (Amazon ECR, AWS ECS Fargate, AWS Secrets Manager, SSM Parameter Store, and CloudWatch), refer to the dedicated cloud deployment guide:
 
-### 1. Authenticate & Push Images to Amazon ECR
-```bash
-export REGISTRY="<aws_account_id>.dkr.ecr.<region>.amazonaws.com"
+👉 **[`cloud-deployment-plan.md`](./cloud-deployment-plan.md)**
 
-# Login to ECR
-aws ecr get-login-password --region <region> | docker login --username AWS --password-stdin $REGISTRY
-
-# Build and push services
-for svc in api-gateway service-phrase service-sentiment service-score; do
-  docker build -t $REGISTRY/$svc:latest ./$svc
-  docker push $REGISTRY/$svc:latest
-done
-```
-
-### 2. Configure AWS Environment Manager (Secrets & SSM)
-- **Secrets Manager** (Sensitive data):
-  ```bash
-  aws secretsmanager create-secret --name "prod/sentiment/db_password" --secret-string "<DB_PASSWORD>"
-  ```
-- **SSM Parameter Store** (Configuration & URLs):
-  ```bash
-  aws ssm put-parameter --name "/sentiment/POSTGRES_HOST" --type String --value "<RDS_ENDPOINT>"
-  aws ssm put-parameter --name "/sentiment/PHRASE_SERVICE_URL" --type String --value "http://service-phrase.local:8002/extract-keywords"
-  aws ssm put-parameter --name "/sentiment/SENTIMENT_SERVICE_URL" --type String --value "http://service-sentiment.local:8003/analyze-sentiment"
-  aws ssm put-parameter --name "/sentiment/SCORE_SERVICE_URL" --type String --value "http://service-score.local:8004/calculate-score"
-  ```
-
-### 3. Deploy to ECS Fargate
-1. Reference the Secrets (`POSTGRES_PASSWORD`) and SSM parameters in each ECS Task Definition under the `secrets` array.
-2. Deploy the services:
-   ```bash
-   aws ecs update-service --cluster sentiment-cluster --service api-gateway --force-new-deployment
-   ```
-
-### 4. Monitor Cloud Audit Logs
-Audit logs stream to AWS CloudWatch automatically:
-```bash
-aws logs tail "/ecs/live-call-sentiment" --follow --filter-pattern "AUDIT"
-```
+It covers:
+- Image registry setup with Amazon ECR
+- Injecting credentials via AWS Secrets Manager & SSM Parameter Store
+- Fargate Task Definitions & Service deployment
+- Zero-downtime rolling updates
+- CloudWatch live audit logging

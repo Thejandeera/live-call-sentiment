@@ -53,13 +53,14 @@ live-call-sentiment/
 ├── .env.example            # Environment configuration template
 ├── .env                    # Local runtime environment
 ├── architecture.md         # Full system architecture specification
-├── deployment_plan.md      # Deployment guide (Docker & AWS)
+├── deployment_plan.md      # Local Docker deployment guide
+├── cloud-deployment-plan.md# AWS Cloud deployment guide (ECR + ECS Fargate)
 ├── requests.http           # REST API test suite
 ├── start_services.bat      # Windows batch startup script
 └── README.md               # Primary project documentation
 ```
 
-For full diagrams, state machines, and component topologies, see [`architecture.md`](./architecture.md). For containerization and production deployment guides, see [`deployment_plan.md`](./deployment_plan.md).
+For full diagrams, state machines, and component topologies, see [`architecture.md`](./architecture.md). For local containerization, see [`deployment_plan.md`](./deployment_plan.md). For AWS production deployment, see [`cloud-deployment-plan.md`](./cloud-deployment-plan.md).
 
 ---
 
