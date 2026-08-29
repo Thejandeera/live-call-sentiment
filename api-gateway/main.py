@@ -20,7 +20,7 @@ app = FastAPI(title="Live Call Sentiment API Gateway")
 
 app.add_middleware(AuditLoggingMiddleware, service_name="api-gateway")
 
-raw_origins = os.getenv("CORS_ORIGINS")
+raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
 origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
 if not origins:
     origins = ["http://localhost:3000"]
@@ -46,10 +46,10 @@ class MessagePayload(BaseModel):
     peak_negativity: Optional[float] = None
     recent_scores: Optional[List[float]] = None
 
-PHRASE_SERVICE_URL = os.getenv("PHRASE_SERVICE_URL")
+PHRASE_SERVICE_URL = os.getenv("PHRASE_SERVICE_URL", "http://service-phrase:8002/extract-keywords")
 PHRASE_SERVICE_BASE = PHRASE_SERVICE_URL.rsplit('/', 1)[0]
-SENTIMENT_SERVICE_URL = os.getenv("SENTIMENT_SERVICE_URL")
-SCORE_SERVICE_URL = os.getenv("SCORE_SERVICE_URL")
+SENTIMENT_SERVICE_URL = os.getenv("SENTIMENT_SERVICE_URL", "http://service-sentiment:8003/analyze-sentiment")
+SCORE_SERVICE_URL = os.getenv("SCORE_SERVICE_URL", "http://service-score:8004/calculate-score")
 
 http_client: Optional[httpx.AsyncClient] = None
 

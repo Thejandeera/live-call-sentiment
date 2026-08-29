@@ -53,8 +53,7 @@ live-call-sentiment/
 ├── .env.example            # Environment configuration template
 ├── .env                    # Local runtime environment
 ├── architecture.md         # Full system architecture specification
-├── deployment_plan.md      # Deployment guide (Docker & VM)
-├── docker-compose.yml      # Multi-container orchestration
+├── deployment_plan.md      # Deployment guide (Docker & AWS)
 ├── requests.http           # REST API test suite
 ├── start_services.bat      # Windows batch startup script
 └── README.md               # Primary project documentation

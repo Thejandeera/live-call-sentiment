@@ -15,7 +15,7 @@ POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json
 
 {
-  "text": "I am extremely unhappy and I want to cancel my account immediately."
+  "text": "I am extremely hello unhappy and I want to cancel my account immediately."
 }
 
 ### 1b. Process Direct Text Message (Agent Response)
@@ -51,10 +51,11 @@ Content-Type: application/json
 
 {
   "keywords": [
-    "talk to supervisor",
-    "unacceptable service",
-    "demand refund",
-    "cancel subscription"
+    "refund",
+    "hello",
+    "Thank you",
+    "good",
+    "dissapointed"
   ]
 }
 
