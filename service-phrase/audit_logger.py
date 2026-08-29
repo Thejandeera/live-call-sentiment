@@ -1,12 +1,13 @@
 import os
 import sys
+import re
 import json
 import time
 import uuid
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from dotenv import load_dotenv
@@ -33,11 +34,9 @@ def setup_audit_logger(service_name: str) -> logging.Logger:
     default_log_dir = str(Path(__file__).resolve().parent.parent / "logs")
     log_dir = os.getenv("LOG_DIR", default_log_dir)
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
-    max_bytes = int(os.getenv("LOG_MAX_BYTES", 10485760))
-    backup_count = int(os.getenv("LOG_BACKUP_COUNT", 10))
+    backup_days = int(os.getenv("LOG_BACKUP_DAYS", 30))
 
     service_log_path = Path(log_dir) / f"{service_name}-logs"
-    service_log_path.mkdir(parents=True, exist_ok=True)
 
     logger = logging.getLogger(f"audit.{service_name}")
     logger.setLevel(getattr(logging, log_level, logging.INFO))
@@ -45,14 +44,22 @@ def setup_audit_logger(service_name: str) -> logging.Logger:
 
     if not logger.handlers:
         formatter = JSONFormatter()
-        file_handler = RotatingFileHandler(
-            filename=service_log_path / "audit.log",
-            maxBytes=max_bytes,
-            backupCount=backup_count,
-            encoding="utf-8"
-        )
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+        try:
+            service_log_path.mkdir(parents=True, exist_ok=True)
+            file_handler = TimedRotatingFileHandler(
+                filename=service_log_path / "audit.log",
+                when="midnight",
+                interval=1,
+                backupCount=backup_days,
+                encoding="utf-8",
+                utc=True
+            )
+            file_handler.suffix = "%Y-%m-%d.log"
+            file_handler.extMatch = re.compile(r"^\d{4}-\d{2}-\d{2}\.log$")
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        except Exception as e:
+            sys.stderr.write(f"[AuditLogger] Note: File logging disabled ({e}). Outputting to stdout.\n")
 
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(formatter)

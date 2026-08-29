@@ -258,7 +258,7 @@ python -m spacy download en_core_web_sm
 copy .env.example .env
 ```
 
-### 6.3 Launch All Microservices
+### 6.3 Launch All Microservices Locally
 
 Run the provided Windows startup script:
 
@@ -281,6 +281,64 @@ cd service-sentiment && uvicorn main:app --port 8003 --reload
 # Terminal 4: Live Sentiment Score Service (Port 8004)
 cd service-score && uvicorn main:app --port 8004 --reload
 ```
+
+### 6.4 Docker Deployment (Without Docker Compose)
+
+Containers are configured with **zero hardcoded environment variables**. All configurations are injected dynamically at runtime via `--env-file .env` (locally) or AWS Secrets Manager / Parameter Store (production).
+
+#### 1. Create Docker Network & Build Images
+```bash
+# Create shared bridge network for container DNS resolution
+docker network create sentiment-network
+
+# Build microservice images
+docker build -t api-gateway ./api-gateway
+docker build -t service-phrase ./service-phrase
+docker build -t service-sentiment ./service-sentiment
+docker build -t service-score ./service-score
+```
+
+#### 2. Start PostgreSQL Container
+```bash
+docker run -d \
+  --name sentiment_postgres \
+  --network sentiment-network \
+  -p 5432:5432 \
+  -e POSTGRES_DB=callIntelligence \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -v pgdata:/var/lib/postgresql/data \
+  postgres:17-alpine
+```
+
+#### 3. Run Microservices (with Host Log Sync `-v`)
+```bash
+# 1. Phrase Service (Port 8002)
+docker run -d --name service_phrase --network sentiment-network -p 8002:8002 \
+  --env-file .env -e LOG_DIR=/app/logs -e POSTGRES_HOST=sentiment_postgres -e POSTGRES_PORT=5432 -e POSTGRES_PASSWORD=postgres \
+  -v "${PWD}/logs:/app/logs" service-phrase
+
+# 2. Sentiment Service (Port 8003)
+docker run -d --name service_sentiment --network sentiment-network -p 8003:8003 \
+  --env-file .env -e LOG_DIR=/app/logs \
+  -v "${PWD}/logs:/app/logs" service-sentiment
+
+# 3. Score Service (Port 8004)
+docker run -d --name service_score --network sentiment-network -p 8004:8004 \
+  --env-file .env -e LOG_DIR=/app/logs \
+  -v "${PWD}/logs:/app/logs" service-score
+
+# 4. API Gateway (Port 8000)
+docker run -d --name api_gateway --network sentiment-network -p 8000:8000 \
+  --env-file .env -e LOG_DIR=/app/logs \
+  -e PHRASE_SERVICE_URL=http://service_phrase:8002/extract-keywords \
+  -e SENTIMENT_SERVICE_URL=http://service_sentiment:8003/analyze-sentiment \
+  -e SCORE_SERVICE_URL=http://service_score:8004/calculate-score \
+  -v "${PWD}/logs:/app/logs" api-gateway
+```
+
+> [!NOTE]
+> The `-v "${PWD}/logs:/app/logs"` bind mount and `-e LOG_DIR=/app/logs` flag ensure audit logs written inside containers sync directly to your local `logs/` folder in real-time. For full AWS production deployment with AWS Secrets Manager, see [`deployment_plan.md`](./deployment_plan.md).
 
 ---
 
