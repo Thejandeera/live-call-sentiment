@@ -390,19 +390,26 @@ docker run -d --name api_gateway --network sentiment-network -p 8000:8000 \
 ### 7.2 Keyword Management Endpoints (PostgreSQL)
 
 #### Add Keyword(s): `POST /api/v1/add-keyword`
-- **Request (Single Keyword)**:
+- **Request (Single Keyword with Category)**:
   ```json
   {
-    "keyword": "cancel account"
+    "keyword": "cancel account",
+    "category": "churn"
   }
   ```
-- **Request (Batch Keywords)**:
+- **Request (Single Keyword without Category - Defaults to `null`)**:
+  ```json
+  {
+    "keyword": "escalate to manager"
+  }
+  ```
+- **Request (Batch Keywords with Specific Categories)**:
   ```json
   {
     "keywords": [
-      "talk to supervisor",
-      "demand refund",
-      "terrible service"
+      { "keyword": "talk to supervisor", "category": "escalation" },
+      { "keyword": "demand refund", "category": "billing" },
+      { "keyword": "terrible service" }
     ]
   }
   ```
@@ -410,9 +417,13 @@ docker run -d --name api_gateway --network sentiment-network -p 8000:8000 \
   ```json
   {
     "status": "success",
-    "message": "Successfully processed 3 keyword(s). 3 new keyword(s) stored.",
+    "message": "Successfully processed 3 keyword(s). 3 new or updated keyword(s) stored.",
     "added_count": 3,
-    "processed_keywords": ["talk to supervisor", "demand refund", "terrible service"]
+    "processed_keywords": [
+      { "keyword": "talk to supervisor", "category": "escalation" },
+      { "keyword": "demand refund", "category": "billing" },
+      { "keyword": "terrible service", "category": null }
+    ]
   }
   ```
 
@@ -423,9 +434,9 @@ docker run -d --name api_gateway --network sentiment-network -p 8000:8000 \
     "status": "success",
     "count": 3,
     "keywords": [
-      { "keyword": "cancel account" },
-      { "keyword": "demand refund" },
-      { "keyword": "talk to supervisor" }
+      { "keyword": "cancel account", "category": "churn" },
+      { "keyword": "demand refund", "category": "billing" },
+      { "keyword": "talk to supervisor", "category": "escalation" }
     ]
   }
   ```
@@ -439,6 +450,12 @@ docker run -d --name api_gateway --network sentiment-network -p 8000:8000 \
     "keyword": "cancel account"
   }
   ```
+
+#### Database Migration
+For existing deployments, run the migration script located in [`migrations/001_add_category_to_call_admin_keywords.sql`](./migrations/001_add_category_to_call_admin_keywords.sql):
+```bash
+psql -U postgres -d callIntelligence -f migrations/001_add_category_to_call_admin_keywords.sql
+```
 
 ---
 

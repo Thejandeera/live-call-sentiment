@@ -37,38 +37,59 @@ Content-Type: application/json
   "previous_score": -60.0
 }
 
-### 2a. Add Single Monitored Keyword via API Gateway (PostgreSQL)
+### 2a. Add Single Monitored Keyword with Category via API Gateway (PostgreSQL)
 POST http://localhost:8000/api/v1/add-keyword
 Content-Type: application/json
 
 {
-  "keyword": "cancel account"
+  "keyword": "cancel account",
+  "category": "churn"
 }
 
-### 2b. Add Multiple Monitored Keywords in Batch via API Gateway (PostgreSQL)
+### 2b. Add Single Monitored Keyword without Category (Defaults to NULL)
+POST http://localhost:8000/api/v1/add-keyword
+Content-Type: application/json
+
+{
+  "keyword": "Bad"
+}
+
+### 2c. Add Multiple Monitored Keywords with Specific Categories in Batch
 POST http://localhost:8000/api/v1/add-keyword
 Content-Type: application/json
 
 {
   "keywords": [
-    "refund",
-    "hello",
-    "Thank you",
-    "good",
-    "dissapointed"
+    { "keyword": "refund", "category": "billing" },
+    { "keyword": "billing dispute", "category": "billing" },
+    { "keyword": "lawyer", "category": "compliance" },
+    { "keyword": "talk to supervisor" }
   ]
 }
 
-### 2c. Get All Monitored Keywords via API Gateway (PostgreSQL)
+### 2d. Add Multiple Monitored Keywords with Common Category
+POST http://localhost:8000/api/v1/add-keyword
+Content-Type: application/json
+
+{
+  "category": "satisfaction",
+  "keywords": [
+    "great job",
+    "thank you",
+    "excellent service"
+  ]
+}
+
+### 2e. Get All Monitored Keywords via API Gateway (PostgreSQL)
 GET http://localhost:8000/api/v1/admin-keywords
 
-### 2d. Delete a Monitored Keyword via API Gateway (PostgreSQL)
+### 2f. Delete a Monitored Keyword via API Gateway (PostgreSQL)
 DELETE http://localhost:8000/api/v1/delete-keyword/cancel%20account
 
-### 2e. Direct Phrase Service - Get Keywords
+### 2g. Direct Phrase Service - Get Keywords
 GET http://localhost:8002/admin-keywords
 
-### 2f. Direct Phrase Service - Extract Keywords in Text
+### 2h. Direct Phrase Service - Extract Keywords in Text
 POST http://localhost:8002/extract-keywords
 Content-Type: application/json
 

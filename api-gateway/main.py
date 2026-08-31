@@ -2,7 +2,7 @@ import os
 import time
 import asyncio
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -33,9 +33,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class KeywordItem(BaseModel):
+    keyword: str
+    category: Optional[str] = None
+
 class KeywordPayload(BaseModel):
     keyword: Optional[str] = None
-    keywords: Optional[List[str]] = None
+    category: Optional[str] = None
+    keywords: Optional[List[Union[str, KeywordItem]]] = None
 
 class MessagePayload(BaseModel):
     text: str

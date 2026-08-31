@@ -34,11 +34,16 @@ POSTGRES_TABLE = os.getenv("POSTGRES_TABLE", "call_admin_keywords")
 POSTGRES_URI = os.getenv("POSTGRES_URI")
 SPACY_MODEL = os.getenv("SPACY_MODEL", "en_core_web_sm")
 
-in_memory_keywords = set()
+in_memory_keywords = {}
+
+class KeywordItem(BaseModel):
+    keyword: str
+    category: Optional[str] = None
 
 class KeywordPayload(BaseModel):
     keyword: Optional[str] = None
-    keywords: Optional[List[str]] = None
+    category: Optional[str] = None
+    keywords: Optional[List[Union[str, KeywordItem]]] = None
 
 class TextPayload(BaseModel):
     transcript: Optional[str] = ""
@@ -75,10 +80,13 @@ def init_db_pool():
                 CREATE TABLE IF NOT EXISTS {POSTGRES_TABLE} (
                     id SERIAL PRIMARY KEY,
                     keyword VARCHAR(255) UNIQUE NOT NULL,
+                    category VARCHAR(255) DEFAULT NULL,
                     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
                 );
                 """
                 cur.execute(create_table_sql)
+                cur.execute(f"ALTER TABLE {POSTGRES_TABLE} ADD COLUMN IF NOT EXISTS category VARCHAR(255) DEFAULT NULL;")
+                cur.execute(f"CREATE INDEX IF NOT EXISTS idx_{POSTGRES_TABLE}_category ON {POSTGRES_TABLE} (category);")
             conn.commit()
         return db_pool
     except Exception as e:
@@ -130,17 +138,17 @@ def shutdown_event():
         print("[Phrase Service] PostgreSQL connection pool closed.")
 
 
-def fetch_stored_keywords() -> List[str]:
+def fetch_stored_keywords() -> List[dict]:
     """Retrieves all active keywords from PostgreSQL or in-memory fallback."""
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(f"SELECT keyword FROM {POSTGRES_TABLE} ORDER BY keyword ASC;")
+                cur.execute(f"SELECT keyword, category FROM {POSTGRES_TABLE} ORDER BY keyword ASC;")
                 rows = cur.fetchall()
-                return [row[0] for row in rows if row and row[0]]
+                return [{"keyword": row[0], "category": row[1]} for row in rows if row and row[0]]
     except Exception as e:
         print(f"[Phrase Service] Fallback retrieving keywords: {e}")
-        return list(in_memory_keywords)
+        return [{"keyword": kw, "category": cat} for kw, cat in sorted(in_memory_keywords.items())]
 
 
 @app.get("/health")
@@ -174,46 +182,73 @@ async def health_check():
 @app.post("/add-keyword", status_code=status.HTTP_201_CREATED)
 async def add_keywords(payload: KeywordPayload):
     """Saves new monitored keyword(s) into PostgreSQL call_admin_keywords."""
-    words_to_add = []
-    if payload.keyword and payload.keyword.strip():
-        words_to_add.append(payload.keyword.strip().lower())
-    if payload.keywords:
-        for kw in payload.keywords:
-            if kw and kw.strip():
-                words_to_add.append(kw.strip().lower())
+    items_to_process: List[dict] = []
 
-    if not words_to_add:
+   
+    if payload.keyword and payload.keyword.strip():
+        kw_clean = payload.keyword.strip().lower()
+        cat_clean = payload.category.strip() if (payload.category and payload.category.strip()) else None
+        items_to_process.append({"keyword": kw_clean, "category": cat_clean})
+
+    
+    if payload.keywords:
+        for item in payload.keywords:
+            if isinstance(item, str):
+                if item.strip():
+                    cat_clean = payload.category.strip() if (payload.category and payload.category.strip()) else None
+                    items_to_process.append({"keyword": item.strip().lower(), "category": cat_clean})
+            elif isinstance(item, KeywordItem) or (isinstance(item, dict) and "keyword" in item):
+                item_dict = item.dict() if hasattr(item, "dict") else item
+                kw = item_dict.get("keyword")
+                if kw and kw.strip():
+                    raw_cat = item_dict.get("category")
+                    cat_clean = raw_cat.strip() if (raw_cat and isinstance(raw_cat, str) and raw_cat.strip()) else (payload.category.strip() if (payload.category and payload.category.strip()) else None)
+                    items_to_process.append({"keyword": kw.strip().lower(), "category": cat_clean})
+
+    if not items_to_process:
         raise HTTPException(status_code=400, detail="No valid keyword provided. Supply 'keyword' or 'keywords'.")
 
-    words_to_add = list(set(words_to_add))
+ 
+    deduped: dict = {}
+    for item in items_to_process:
+        kw = item["keyword"]
+        cat = item["category"]
+        if kw not in deduped or cat is not None:
+            deduped[kw] = cat
+
     added_count = 0
 
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                for word in words_to_add:
+                for kw, cat in deduped.items():
                     insert_sql = f"""
-                    INSERT INTO {POSTGRES_TABLE} (keyword)
-                    VALUES (%s)
-                    ON CONFLICT (keyword) DO NOTHING
+                    INSERT INTO {POSTGRES_TABLE} (keyword, category)
+                    VALUES (%s, %s)
+                    ON CONFLICT (keyword) DO UPDATE
+                    SET category = COALESCE(EXCLUDED.category, {POSTGRES_TABLE}.category)
                     RETURNING id;
                     """
-                    cur.execute(insert_sql, (word,))
+                    cur.execute(insert_sql, (kw, cat))
                     res = cur.fetchone()
                     if res is not None:
                         added_count += 1
             conn.commit()
     except Exception as e:
-        for word in words_to_add:
-            if word not in in_memory_keywords:
-                in_memory_keywords.add(word)
+        for kw, cat in deduped.items():
+            if kw not in in_memory_keywords:
+                in_memory_keywords[kw] = cat
                 added_count += 1
+            elif cat is not None:
+                in_memory_keywords[kw] = cat
+
+    processed_keywords = [{"keyword": kw, "category": cat} for kw, cat in deduped.items()]
 
     return {
         "status": "success",
-        "message": f"Successfully processed {len(words_to_add)} keyword(s). {added_count} new keyword(s) stored.",
+        "message": f"Successfully processed {len(deduped)} keyword(s). {added_count} new or updated keyword(s) stored.",
         "added_count": added_count,
-        "processed_keywords": words_to_add
+        "processed_keywords": processed_keywords
     }
 
 
@@ -221,11 +256,10 @@ async def add_keywords(payload: KeywordPayload):
 async def get_keywords():
     """Returns all monitored keywords from PostgreSQL."""
     keywords = fetch_stored_keywords()
-    formatted = [{"keyword": kw} for kw in sorted(keywords)]
     return {
         "status": "success",
-        "count": len(formatted),
-        "keywords": formatted
+        "count": len(keywords),
+        "keywords": keywords
     }
 
 
@@ -246,7 +280,7 @@ async def delete_keyword(keyword: str):
             conn.commit()
     except Exception as e:
         if clean_kw in in_memory_keywords:
-            in_memory_keywords.remove(clean_kw)
+            del in_memory_keywords[clean_kw]
             deleted = True
 
     if not deleted:
@@ -270,8 +304,16 @@ async def extract_keywords(payload: TextPayload):
     if not stored_keywords:
         return {"matches": [], "keywords": []}
 
+    global nlp
+    if nlp is None:
+        try:
+            nlp = spacy.load(SPACY_MODEL)
+        except Exception:
+            return {"matches": [], "keywords": []}
+
+    keyword_category_map = {item["keyword"].lower(): item.get("category") for item in stored_keywords if item.get("keyword")}
     matcher = PhraseMatcher(nlp.vocab, attr="LOWER")
-    for kw in stored_keywords:
+    for kw in keyword_category_map:
         if kw:
             matcher.add(kw, [nlp.make_doc(kw)])
 
@@ -287,7 +329,8 @@ async def extract_keywords(payload: TextPayload):
 
         if kw_text not in seen:
             detected_keywords.append({
-                "keyword": matched_span.text
+                "keyword": matched_span.text,
+                "category": keyword_category_map.get(kw_text)
             })
             seen.add(kw_text)
 

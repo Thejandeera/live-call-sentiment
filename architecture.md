@@ -34,7 +34,7 @@ The Live Call Sentiment platform is designed around a **decoupled, asynchronous 
 - **Database Storage (PostgreSQL)**:
   - Connects to PostgreSQL server (database: `callIntelligence`, table: `call_admin_keywords`).
   - Thread-safe connection pool (`ThreadedConnectionPool` via `psycopg2-binary`).
-  - Maintains a unique index on the `keyword` field to prevent duplicate phrase records.
+  - Maintains a unique index on the `keyword` field to prevent duplicate phrase records, and a nullable `category` column (indexed) for category classification.
   - Automatically loads stored keywords into `PhraseMatcher` for real-time text analysis.
   - Includes graceful in-memory fallback if the database connection is initializing or offline.
 
