@@ -6,3 +6,4 @@ httpx>=0.24.0
 psycopg2-binary>=2.9.9
 spacy>=3.5.0
 transformers>=4.30.0
+onnxruntime>=1.15.0

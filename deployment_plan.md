@@ -5,7 +5,7 @@ docker network create sentiment-network
 ```
 
 ```bash
-docker build -f Dockerfile.base -t sentiment-base:latest .
+docker build -f Dockerfile.base -t sentiment-base:latest --no-cache .
 ```
 
 ```bash
@@ -21,10 +21,6 @@ docker run -d \
   --network sentiment-network \
   -p 8002:8002 \
   --env-file .env \
-  -e LOG_DIR=/app/logs \
-  -e POSTGRES_HOST=sentiment_postgres \
-  -e POSTGRES_PORT=5432 \
-  -e POSTGRES_PASSWORD=postgres \
   -v "${PWD}/logs:/app/logs" \
   service-phrase
 ```
@@ -35,7 +31,6 @@ docker run -d \
   --network sentiment-network \
   -p 8003:8003 \
   --env-file .env \
-  -e LOG_DIR=/app/logs \
   -v "${PWD}/logs:/app/logs" \
   service-sentiment
 ```
@@ -46,7 +41,6 @@ docker run -d \
   --network sentiment-network \
   -p 8004:8004 \
   --env-file .env \
-  -e LOG_DIR=/app/logs \
   -v "${PWD}/logs:/app/logs" \
   service-score
 ```
@@ -57,10 +51,6 @@ docker run -d \
   --network sentiment-network \
   -p 8000:8000 \
   --env-file .env \
-  -e LOG_DIR=/app/logs \
-  -e PHRASE_SERVICE_URL=http://service_phrase:8002/extract-keywords \
-  -e SENTIMENT_SERVICE_URL=http://service_sentiment:8003/analyze-sentiment \
-  -e SCORE_SERVICE_URL=http://service_score:8004/calculate-score \
   -v "${PWD}/logs:/app/logs" \
   api-gateway
 ```

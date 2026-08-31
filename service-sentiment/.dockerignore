@@ -1,24 +1,5 @@
-﻿# Git
-.git
-.gitignore
-
-# Python caches
-__pycache__
+﻿__pycache__
 *.pyc
-*.pyo
-*.pyd
-.pytest_cache
-
-# Environment variables & secrets
 .env
-.env*
-!.env.example
-
-# Logs
-logs/
-*.log
-
-# Virtual environments
-venv/
-.venv/
-env/
+venv
+.cache

@@ -71,3 +71,6 @@ Thumbs.db
 *.wmv
 
 
+
+# ONNX Model weights
+onnx_model/
