@@ -1,6 +1,13 @@
 ﻿#!/bin/bash
 
-source venv/bin/activate
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements-base.txt
+    python -m spacy download en_core_web_sm
+else
+    source venv/bin/activate
+fi
 
 trap 'kill $(jobs -p)' EXIT
 
