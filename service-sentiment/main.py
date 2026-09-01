@@ -62,6 +62,16 @@ def load_model():
         print(f"[Sentiment Service] Loading Pure ONNX model '{MODEL_NAME}'...")
         model_path = Path(__file__).resolve().parent / "onnx_model"
         
+      
+        if not (model_path / "model.onnx").exists():
+            print(f"[Sentiment Service] Model not found at {model_path}. Downloading from HF Hub...")
+            from huggingface_hub import snapshot_download
+            snapshot_download(
+                repo_id=MODEL_NAME, 
+                local_dir=str(model_path), 
+                allow_patterns=["*.onnx", "*.json", "*.txt"]
+            )
+            
         load_path = str(model_path) if model_path.exists() and (model_path / "model.onnx").exists() else MODEL_NAME
         
         tokenizer = AutoTokenizer.from_pretrained(load_path)
