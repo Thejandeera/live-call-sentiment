@@ -66,8 +66,11 @@ def load_model():
         if not (model_path / "model.onnx").exists():
             print(f"[Sentiment Service] Model not found at {model_path}. Downloading from HF Hub...")
             from huggingface_hub import snapshot_download
+            
+            onnx_repo = MODEL_NAME if MODEL_NAME.endswith("-onnx") else f"{MODEL_NAME}-onnx"
+            
             snapshot_download(
-                repo_id=MODEL_NAME, 
+                repo_id=onnx_repo, 
                 local_dir=str(model_path), 
                 allow_patterns=["*.onnx", "*.json", "*.txt"]
             )
