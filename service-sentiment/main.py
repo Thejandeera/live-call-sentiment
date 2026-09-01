@@ -74,6 +74,11 @@ def load_model():
                 local_dir=str(model_path), 
                 allow_patterns=["*.onnx", "*.json", "*.txt"]
             )
+           
+            downloaded_onnx = model_path / "onnx" / "model.onnx"
+            if downloaded_onnx.exists():
+                import shutil
+                shutil.move(str(downloaded_onnx), str(model_path / "model.onnx"))
             
             
             if not (model_path / "model.onnx").exists():
