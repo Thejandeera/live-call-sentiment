@@ -75,6 +75,14 @@ def load_model():
                 allow_patterns=["*.onnx", "*.json", "*.txt"]
             )
             
+            
+            if not (model_path / "model.onnx").exists():
+                print(f"[Sentiment Service] CRITICAL ERROR: Failed to download 'model.onnx' from '{onnx_repo}'.")
+                import sys
+                sys.exit(1)
+            else:
+                print(f"[Sentiment Service] Successfully downloaded model to {model_path}.")
+                
         load_path = str(model_path) if model_path.exists() and (model_path / "model.onnx").exists() else MODEL_NAME
         
         tokenizer = AutoTokenizer.from_pretrained(load_path)
