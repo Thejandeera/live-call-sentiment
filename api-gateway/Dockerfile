@@ -1,4 +1,4 @@
-FROM sentiment-base:latest
+FROM thejandeerasan/sentiment-base:latest
 WORKDIR /app
 COPY . .
 EXPOSE 8000
