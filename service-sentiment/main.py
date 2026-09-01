@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 from pathlib import Path
 from typing import List, Optional
@@ -62,9 +62,8 @@ def load_model():
         print(f"[Sentiment Service] Loading Pure ONNX model '{MODEL_NAME}'...")
         model_path = Path(__file__).resolve().parent / "onnx_model"
         
-      
         if not (model_path / "model.onnx").exists():
-            print(f"[Sentiment Service] Model not found at {model_path}. Downloading from HF Hub...")
+            print(f"[Sentiment Service] Downloading from HF Hub...")
             from huggingface_hub import snapshot_download
             
             onnx_repo = MODEL_NAME if MODEL_NAME.endswith("-onnx") else f"{MODEL_NAME}-onnx"
@@ -72,7 +71,8 @@ def load_model():
             snapshot_download(
                 repo_id=onnx_repo, 
                 local_dir=str(model_path), 
-                allow_patterns=["*.onnx", "*.json", "*.txt"]
+                allow_patterns=["*.onnx", "*.json", "*.txt"],
+                max_workers=1
             )
            
             downloaded_onnx = model_path / "onnx" / "model.onnx"
@@ -80,13 +80,11 @@ def load_model():
                 import shutil
                 shutil.move(str(downloaded_onnx), str(model_path / "model.onnx"))
             
-            
             if not (model_path / "model.onnx").exists():
-                print(f"[Sentiment Service] CRITICAL ERROR: Failed to download 'model.onnx' from '{onnx_repo}'.")
+                print(f"[Sentiment Service] CRITICAL ERROR: Failed to download 'model.onnx'.")
                 import sys
                 sys.exit(1)
-            else:
-                print(f"[Sentiment Service] Successfully downloaded model to {model_path}.")
+            print(f"[Sentiment Service] Successfully downloaded model.")
                 
         load_path = str(model_path) if model_path.exists() and (model_path / "model.onnx").exists() else MODEL_NAME
         
