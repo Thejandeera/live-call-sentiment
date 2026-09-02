@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.95%2B-009688.svg)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17%2B-336791.svg)](https://www.postgresql.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C.svg)](https://pytorch.org/)
+[![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-1.15%2B-005CFC.svg)](https://onnxruntime.ai/)
 [![Transformers](https://img.shields.io/badge/Transformers-4.30%2B-orange.svg)](https://huggingface.co/transformers/)
 [![spaCy](https://img.shields.io/badge/spaCy-3.5%2B-09A3D5.svg)](https://spacy.io/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -187,7 +187,7 @@ Every dependency in this repository has been selected for high performance, reli
 - **`python-dotenv>=1.0.0`**: Dynamic database and service configuration.
 
 ### 4.3 Sentiment Service (`service-sentiment/requirements.txt`)
-- **`torch>=2.0.0`**: PyTorch backend with optimized `torch.inference_mode()` tensor execution.
+- **`onnxruntime>=1.15.0`**: High-performance ONNX Runtime backend for accelerated CPU inference.
 - **`transformers>=4.30.0`**: Hugging Face pipeline for `SamLowe/roberta-base-go_emotions`.
 - **`pydantic>=1.10.0`**: Batch payload structuring.
 - **`python-dotenv>=1.0.0`**: Dynamic model identification.
