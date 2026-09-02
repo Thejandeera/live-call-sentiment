@@ -30,7 +30,67 @@ class JSONFormatter(logging.Formatter):
             "message": record.getMessage()
         }, ensure_ascii=False)
 
+
+class StdoutTee:
+    def __init__(self, original_stream, handler):
+        self.original_stream = original_stream
+        self.handler = handler
+      
+        self.dummy_record = logging.LogRecord("", logging.INFO, "", 0, "", (), None)
+
+    def write(self, message):
+        self.original_stream.write(message)
+        try:
+            if self.handler.shouldRollover(self.dummy_record):
+                self.handler.doRollover()
+            if self.handler.stream:
+                self.handler.stream.write(message)
+                self.handler.stream.flush()
+        except Exception:
+            pass
+
+    def flush(self):
+        self.original_stream.flush()
+        try:
+            if self.handler.stream:
+                self.handler.stream.flush()
+        except Exception:
+            pass
+
+_app_log_setup_done = False
+
+def setup_app_logging(service_name: str):
+    global _app_log_setup_done
+    if _app_log_setup_done:
+        return
+    _app_log_setup_done = True
+
+    default_log_dir = str(Path(__file__).resolve().parent.parent / "logs")
+    log_dir = os.getenv("LOG_DIR", default_log_dir)
+    backup_days = int(os.getenv("LOG_BACKUP_DAYS", 30))
+    service_log_path = Path(log_dir) / f"{service_name}-logs"
+    
+    try:
+        service_log_path.mkdir(parents=True, exist_ok=True)
+        file_handler = TimedRotatingFileHandler(
+            filename=service_log_path / "app.log",
+            when="midnight",
+            interval=1,
+            backupCount=backup_days,
+            encoding="utf-8",
+            utc=True
+        )
+        file_handler.suffix = "%Y-%m-%d.log"
+        file_handler.extMatch = re.compile(r"^\d{4}-\d{2}-\d{2}\.log$")
+        
+        sys.stdout = StdoutTee(sys.stdout, file_handler)
+        sys.stderr = StdoutTee(sys.stderr, file_handler)
+    except Exception as e:
+        sys.stderr.write(f"[AppLogger] Note: App logging disabled ({e}).\n")
+
+
 def setup_audit_logger(service_name: str) -> logging.Logger:
+    setup_app_logging(service_name)
     default_log_dir = str(Path(__file__).resolve().parent.parent / "logs")
     log_dir = os.getenv("LOG_DIR", default_log_dir)
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
