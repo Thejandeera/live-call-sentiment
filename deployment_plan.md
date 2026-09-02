@@ -1,13 +1,16 @@
-﻿# Local Docker Deployment Plan
+# Local Docker Deployment Plan
 
+## 1. Create Docker Network
 ```bash
 docker network create sentiment-network
 ```
 
+## 2. Build Base Image
 ```bash
-docker build -f Dockerfile.base -t sentiment-base:latest --no-cache .
+docker build -f Dockerfile.base -t thejandeerasan/sentiment-base:latest -t sentiment-base:latest --no-cache .
 ```
 
+## 3. Build Microservice Images
 ```bash
 docker build -t api-gateway ./api-gateway
 docker build -t service-phrase ./service-phrase
@@ -15,6 +18,7 @@ docker build -t service-sentiment ./service-sentiment
 docker build -t service-score ./service-score
 ```
 
+## 4. Run Downstream Microservices
 ```bash
 docker run -d \
   --name service_phrase \
@@ -45,6 +49,7 @@ docker run -d \
   service-score
 ```
 
+## 5. Run API Gateway
 ```bash
 docker run -d \
   --name api_gateway \
@@ -55,24 +60,20 @@ docker run -d \
   api-gateway
 ```
 
+## 6. Verify Running Containers
 ```bash
 docker ps
 ```
 
+## 7. Check Logs (Optional)
 ```bash
 docker logs -f api_gateway
 docker logs -f service_phrase
+docker logs -f service_sentiment
+docker logs -f service_score
 ```
 
-```bash
-docker stop api_gateway service_phrase service_sentiment service_score
-docker rm api_gateway service_phrase service_sentiment service_score
-```
-
-```bash
-docker network rm sentiment-network
-```
-
+## 8. Health Check Verification
 ```bash
 curl http://localhost:8000/health
 curl http://localhost:8002/health
@@ -80,6 +81,7 @@ curl http://localhost:8003/health
 curl http://localhost:8004/health
 ```
 
+## 9. Test API Functionality
 ```bash
 curl -X POST http://localhost:8000/api/v1/add-keyword \
   -H "Content-Type: application/json" \
@@ -90,4 +92,14 @@ curl -X POST http://localhost:8000/api/v1/add-keyword \
 curl -X POST http://localhost:8000/api/v1/process-text \
   -H "Content-Type: application/json" \
   -d '{"text": "I want to cancel my subscription right now!", "speaker": "caller", "previous_score": 0.0}'
+```
+
+## 10. Teardown / Cleanup
+```bash
+docker stop api_gateway service_phrase service_sentiment service_score
+docker rm api_gateway service_phrase service_sentiment service_score
+```
+
+```bash
+docker network rm sentiment-network
 ```
