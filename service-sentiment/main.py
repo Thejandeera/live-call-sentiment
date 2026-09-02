@@ -2,7 +2,7 @@ import os
 import json
 from pathlib import Path
 from typing import List, Optional
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 import onnxruntime as ort
 from transformers import AutoTokenizer
@@ -16,7 +16,18 @@ if env_path.exists():
 else:
     load_dotenv()
 
+from fastapi.responses import JSONResponse
+
+class CriticalError(Exception):
+    pass
+
 app = FastAPI(title="Sentiment & Emotion Service")
+
+@app.exception_handler(CriticalError)
+async def critical_error_handler(request: Request, exc: CriticalError):
+    print(f"CRITICAL ERROR: {exc}. Terminating service...")
+    os._exit(1)
+
 app.add_middleware(AuditLoggingMiddleware, service_name="service-sentiment")
 
 MODEL_NAME = os.getenv("SENTIMENT_MODEL_NAME", os.getenv("MODEL_NAME", "SamLowe/roberta-base-go_emotions"))
@@ -81,9 +92,7 @@ def load_model():
                 shutil.move(str(downloaded_onnx), str(model_path / "model.onnx"))
             
             if not (model_path / "model.onnx").exists():
-                print(f"[Sentiment Service] CRITICAL ERROR: Failed to download 'model.onnx'.")
-                import sys
-                sys.exit(1)
+                raise CriticalError("Failed to download 'model.onnx'")
             print(f"[Sentiment Service] Successfully downloaded model.")
                 
         load_path = str(model_path) if model_path.exists() and (model_path / "model.onnx").exists() else MODEL_NAME

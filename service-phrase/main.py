@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 import spacy
 from spacy.matcher import PhraseMatcher
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
 from pydantic import BaseModel
 import psycopg2
 from psycopg2 import pool
@@ -21,7 +21,17 @@ if env_path.exists():
 else:
     load_dotenv()
 
+from fastapi.responses import JSONResponse
+
+class CriticalError(Exception):
+    pass
+
 app = FastAPI(title="Keyword & Phrase Detection Service (PostgreSQL)")
+
+@app.exception_handler(CriticalError)
+async def critical_error_handler(request: Request, exc: CriticalError):
+    print(f"CRITICAL ERROR: {exc}. Terminating service...")
+    os._exit(1)
 
 app.add_middleware(AuditLoggingMiddleware, service_name="service-phrase")
 

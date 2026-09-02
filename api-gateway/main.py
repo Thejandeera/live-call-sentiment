@@ -16,7 +16,18 @@ if env_path.exists():
 else:
     load_dotenv()
 
+import signal
+from fastapi.responses import JSONResponse
+
+class CriticalError(Exception):
+    pass
+
 app = FastAPI(title="Live Call Sentiment API Gateway")
+
+@app.exception_handler(CriticalError)
+async def critical_error_handler(request: Request, exc: CriticalError):
+    print(f"CRITICAL ERROR: {exc}. Terminating service...")
+    os._exit(1)
 
 app.add_middleware(AuditLoggingMiddleware, service_name="api-gateway")
 

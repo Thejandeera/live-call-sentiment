@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 
 if [ ! -d "venv" ]; then
     python3 -m venv venv
@@ -16,4 +16,4 @@ trap 'kill $(jobs -p)' EXIT
 (cd service-sentiment && uvicorn main:app --port 8003 --reload) &
 (cd service-score && uvicorn main:app --port 8004 --reload) &
 
-wait
+wait -n

@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 from typing import Optional, List
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from audit_logger import AuditLoggingMiddleware
@@ -12,7 +12,17 @@ if env_path.exists():
 else:
     load_dotenv()
 
+from fastapi.responses import JSONResponse
+
+class CriticalError(Exception):
+    pass
+
 app = FastAPI(title="Live Sentiment Score Service")
+
+@app.exception_handler(CriticalError)
+async def critical_error_handler(request: Request, exc: CriticalError):
+    print(f"CRITICAL ERROR: {exc}. Terminating service...")
+    os._exit(1)
 
 app.add_middleware(AuditLoggingMiddleware, service_name="service-score")
 
