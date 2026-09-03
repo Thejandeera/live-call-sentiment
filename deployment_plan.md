@@ -1,24 +1,64 @@
 # Local Docker Deployment Plan
 
-## 1. Create Docker Network
+This guide outlines the steps to build, configure, run, and verify the **Live Call Sentiment Analysis & Monitoring Platform** locally using Docker.
+
+---
+
+## 1. Prerequisites & Directory Setup
+
+Ensure Docker is running and create the necessary host directories for audit logs and persistent model caching:
+
 ```bash
+# Create host directories for logs and persistent model cache
+mkdir -p logs model_cache
+
+# Create Docker bridge network
 docker network create sentiment-network
 ```
 
-## 2. Build Base Image
+> [!TIP]
+> The `model_cache` folder persists the RoBERTa model weights on your host machine (`./model_cache/roberta`). The 478 MB model will be downloaded only once; all subsequent container launches will load in under 2 seconds.
+
+---
+
+## 2. Environment Configuration
+
+Copy the example environment file if you haven't already:
+
 ```bash
-docker build -f Dockerfile.base -t thejandeerasan/sentiment-base:latest -t sentiment-base:latest --no-cache .
+cp .env.example .env
 ```
 
-## 3. Build Microservice Images
+Ensure the PostgreSQL credentials and service URLs match your environment in `.env`.
+
+---
+
+## 3. Build Base Docker Image
+
+Build the shared base image containing Python 3.11, PyTorch CPU, spaCy (`en_core_web_sm`), Hugging Face Transformers, and FastAPI:
+
 ```bash
-docker build -t api-gateway ./api-gateway
-docker build -t service-phrase ./service-phrase
-docker build -t service-sentiment ./service-sentiment
-docker build -t service-score ./service-score
+docker build -f Dockerfile.base -t r1-sentiment-base:v2 --no-cache .
 ```
 
-## 4. Run Downstream Microservices
+---
+
+## 4. Build Microservice Images
+
+Build each service image using the local base image:
+
+```bash
+docker build -t r1-service-phrase:v2 ./service-phrase
+docker build -t r1-service-sentiment:v2 ./service-sentiment
+docker build -t r1-service-score:v2 ./service-score
+docker build -t r1-api-gateway:v2 ./api-gateway
+```
+
+---
+
+## 5. Run Downstream Microservices
+
+### A. Phrase Extraction Service (Port 8002)
 ```bash
 docker run -d \
   --name service_phrase \
@@ -26,19 +66,26 @@ docker run -d \
   -p 8002:8002 \
   --env-file .env \
   -v "${PWD}/logs:/app/logs" \
-  service-phrase
+  r1-service-phrase:v2
 ```
 
+### B. Sentiment & Emotion Service (Port 8003)
+> [!IMPORTANT]
+> - `-t` allocates a pseudo-TTY so the real-time download progress updates cleanly in-place on a single line.
+> - `-v "${PWD}/model_cache:/app/models"` mounts the model cache so the weights are persisted on the host.
+
 ```bash
-docker run -d \
+docker run -d -t \
   --name service_sentiment \
   --network sentiment-network \
   -p 8003:8003 \
   --env-file .env \
   -v "${PWD}/logs:/app/logs" \
-  service-sentiment
+  -v "${PWD}/model_cache:/app/models" \
+  r1-service-sentiment:v2
 ```
 
+### C. Live Sentiment Score Service (Port 8004)
 ```bash
 docker run -d \
   --name service_score \
@@ -46,34 +93,53 @@ docker run -d \
   -p 8004:8004 \
   --env-file .env \
   -v "${PWD}/logs:/app/logs" \
-  service-score
+  r1-service-score:v2
 ```
 
-## 5. Run API Gateway
+---
+
+## 6. Run API Gateway (Port 8000)
+
 ```bash
 docker run -d \
-  --name api_gateway \
+  --name api-gateway \
   --network sentiment-network \
   -p 8000:8000 \
   --env-file .env \
   -v "${PWD}/logs:/app/logs" \
-  api-gateway
+  r1-api-gateway:v2
 ```
 
-## 6. Verify Running Containers
-```bash
-docker ps
-```
+---
 
-## 7. Check Logs (Optional)
+## 7. Monitor Model Download & Container Logs
+
+### Real-Time Model Download Progress
+Watch the model download in real time. It displays on a single line updating every second with percentage, downloaded MB, transfer speed, and ETA:
+
 ```bash
-docker logs -f api_gateway
-docker logs -f service_phrase
 docker logs -f service_sentiment
+```
+
+**Sample Output:**
+```text
+[Sentiment Service] Preparing RoBERTa model 'SamLowe/roberta-base-go_emotions' in '/app/models/roberta'...
+[Sentiment Service] Downloading RoBERTa model 'SamLowe/roberta-base-go_emotions' (478.8 MB)...
+[Sentiment Service] Connecting to Hugging Face CDN...
+[Downloading model.safetensors]  45.2% (216.0/478.8 MB) | Speed: 4.80 MB/s | ETA: 54s
+```
+
+### Other Service Logs
+```bash
+docker logs -f api-gateway
+docker logs -f service_phrase
 docker logs -f service_score
 ```
 
+---
+
 ## 8. Health Check Verification
+
 ```bash
 curl http://localhost:8000/health
 curl http://localhost:8002/health
@@ -81,24 +147,66 @@ curl http://localhost:8003/health
 curl http://localhost:8004/health
 ```
 
-## 9. Test API Functionality
+---
+
+## 9. Fault Tolerance & API Testing
+
+The API Gateway includes built-in fault tolerance and graceful degradation:
+- If a downstream service is offline or initializing, the gateway **will not hang or fail with a 500 error**.
+- Individual service status (`online`, `unavailable`, `degraded`) is reported under `services_status`.
+- Keyword extraction, sentiment classification, and score calculation run in parallel with 3-second timeouts.
+
+### Add a Keyword
 ```bash
 curl -X POST http://localhost:8000/api/v1/add-keyword \
   -H "Content-Type: application/json" \
-  -d '{"keyword": "cancel subscription"}'
+  -d '{"keyword": "bad"}'
 ```
 
+### Process Text (Caller Turn)
 ```bash
 curl -X POST http://localhost:8000/api/v1/process-text \
   -H "Content-Type: application/json" \
-  -d '{"text": "I want to cancel my subscription right now!", "speaker": "caller", "previous_score": 0.0}'
+  -d '{"text": "its very bad, I am very disappointed", "speaker": "caller", "previous_score": -50}'
 ```
 
-## 10. Teardown / Cleanup
-```bash
-docker stop api_gateway service_phrase service_sentiment service_score
-docker rm api_gateway service_phrase service_sentiment service_score
+**Sample Response:**
+```json
+{
+  "status": "success",
+  "processing_time_ms": 32.81,
+  "services_status": {
+    "phrase_service": "online",
+    "sentiment_service": "online",
+    "score_service": "online"
+  },
+  "detected_issues": [
+    {
+      "isolated_sentence": "its very bad, I am very disappointed",
+      "detected_keywords": [
+        { "keyword": "bad", "category": null }
+      ],
+      "emotion": "disappointment",
+      "confidence": 0.8421,
+      "sentiment_category": "negative",
+      "live_score": -62.5
+    }
+  ]
+}
 ```
+
+---
+
+## 10. Teardown / Cleanup
+
+Stop and remove all running containers:
+
+```bash
+docker stop api-gateway service_phrase service_sentiment service_score
+docker rm api-gateway service_phrase service_sentiment service_score
+```
+
+Remove the Docker network (optional):
 
 ```bash
 docker network rm sentiment-network

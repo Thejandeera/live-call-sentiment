@@ -1,4 +1,5 @@
-FROM thejandeerasan/sentiment-base:latest
+FROM r1-sentiment-base:v2
+ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 COPY . .
 EXPOSE 8002

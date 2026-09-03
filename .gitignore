@@ -72,5 +72,7 @@ Thumbs.db
 
 
 
-# ONNX Model weights
+
 onnx_model/
+model_cache/
+models/
