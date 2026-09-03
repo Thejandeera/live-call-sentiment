@@ -1,12 +1,27 @@
 import os
+import sys
+
+# Suppress verbose huggingface/transformers multi-line and per-file progress bars
+os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+os.environ["TRANSFORMERS_NO_ADVISORY_WARNINGS"] = "1"
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "0"
+
 import torch
 from pathlib import Path
 from typing import List, Optional
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
-from transformers import pipeline
+import transformers
+from transformers import pipeline, logging as hf_logging
+from tqdm import tqdm
+import huggingface_hub
+from huggingface_hub import HfApi, hf_hub_download, try_to_load_from_cache
 from dotenv import load_dotenv
 from audit_logger import AuditLoggingMiddleware
+
+hf_logging.set_verbosity_error()
+transformers.utils.logging.disable_progress_bar()
+huggingface_hub.utils.disable_progress_bars()
 
 env_path = Path(__file__).resolve().parent.parent / ".env"
 if env_path.exists():
@@ -41,6 +56,57 @@ class BatchPayload(BaseModel):
 
 roberta_model = None
 
+def download_model_with_progress(repo_id: str):
+    """
+    Downloads required repository files using 1 single real-time progress bar,
+    suppressing byte-by-byte line spam and per-file progress outputs.
+    """
+    try:
+        api = HfApi()
+        info = api.model_info(repo_id, files_metadata=True)
+        
+        files_to_download = []
+        total_bytes = 0
+        
+        for sibling in info.siblings:
+            filename = sibling.rfilename
+            if filename.startswith(".") or filename.endswith(".gitattributes"):
+                continue
+            cached_path = try_to_load_from_cache(repo_id, filename)
+            file_size = sibling.size or 0
+            if cached_path is None or not os.path.exists(cached_path):
+                files_to_download.append((filename, file_size))
+                total_bytes += file_size
+
+        if not files_to_download:
+            return
+
+        print(f"[Sentiment Service] Downloading RoBERTa model '{repo_id}' ({total_bytes / (1024 * 1024):.1f} MB)...")
+        
+        with tqdm(
+            total=total_bytes,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            desc=f"Downloading {repo_id.split('/')[-1]}",
+            ncols=85,
+            file=sys.stdout,
+            leave=True,
+            mininterval=0.2
+        ) as pbar:
+            for filename, file_size in files_to_download:
+                hf_hub_download(
+                    repo_id=repo_id,
+                    filename=filename,
+                )
+                if file_size > 0:
+                    pbar.update(file_size)
+            if pbar.n < total_bytes:
+                pbar.update(total_bytes - pbar.n)
+    except Exception:
+        # Fallback to default pipeline loader if metadata query fails
+        pass
+
 def categorize_emotion(emotion: str, score: float) -> str:
     positive_emotions = {
         "admiration", "amusement", "approval", "caring", "desire",
@@ -63,6 +129,7 @@ def load_model():
     if roberta_model is None:
         try:
             print(f"[Sentiment Service] Loading RoBERTa model '{MODEL_NAME}'...")
+            download_model_with_progress(MODEL_NAME)
             roberta_model = pipeline("text-classification", model=MODEL_NAME)
             print("[Sentiment Service] RoBERTa model ready.")
         except Exception as e:
