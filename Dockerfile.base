@@ -5,6 +5,7 @@ WORKDIR /app
 COPY requirements-base.txt .
 
 RUN apt-get update && apt-get install -y binutils \
+    && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir -r requirements-base.txt \
     && python -m spacy download en_core_web_sm \
     && (find /usr/local/lib/python3.11/site-packages -name "*.so" -exec strip --strip-unneeded {} + 2>/dev/null || true) \
