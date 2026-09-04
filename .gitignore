@@ -76,3 +76,5 @@ Thumbs.db
 onnx_model/
 model_cache/
 models/
+logs;*
+logs;C/

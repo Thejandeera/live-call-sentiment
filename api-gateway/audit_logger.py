@@ -5,6 +5,7 @@ import json
 import time
 import uuid
 import logging
+import threading
 from pathlib import Path
 from datetime import datetime, timezone
 from logging.handlers import TimedRotatingFileHandler
@@ -32,30 +33,46 @@ class JSONFormatter(logging.Formatter):
 
 
 class StdoutTee:
+    _lock = threading.Lock()
+    ANSI_REGEX = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
     def __init__(self, original_stream, handler):
         self.original_stream = original_stream
         self.handler = handler
-        
         self.dummy_record = logging.LogRecord("", logging.INFO, "", 0, "", (), None)
+        self._buffer = ""
 
     def write(self, message):
         self.original_stream.write(message)
         try:
-            if self.handler.shouldRollover(self.dummy_record):
-                self.handler.doRollover()
-            if self.handler.stream:
-                self.handler.stream.write(message)
-                self.handler.stream.flush()
+            with StdoutTee._lock:
+                clean = self.ANSI_REGEX.sub('', message).replace('\r', '')
+                if not clean:
+                    return
+                self._buffer += clean
+                if '\n' in self._buffer:
+                    lines = self._buffer.split('\n')
+                    self._buffer = lines[-1]
+                    to_write = '\n'.join(lines[:-1]) + '\n'
+                    if self.handler.shouldRollover(self.dummy_record):
+                        self.handler.doRollover()
+                    if self.handler.stream:
+                        self.handler.stream.write(to_write)
+                        self.handler.stream.flush()
         except Exception:
             pass
 
     def flush(self):
         self.original_stream.flush()
         try:
-            if self.handler.stream:
-                self.handler.stream.flush()
+            with StdoutTee._lock:
+                if self._buffer and self.handler.stream:
+                    self.handler.stream.write(self._buffer)
+                    self.handler.stream.flush()
+                    self._buffer = ""
         except Exception:
             pass
+
 
 _app_log_setup_done = False
 

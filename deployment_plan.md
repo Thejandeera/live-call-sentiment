@@ -16,8 +16,9 @@ mkdir -p logs model_cache
 docker network create sentiment-network
 ```
 
-> [!TIP]
-> The `model_cache` folder persists the RoBERTa model weights on your host machine (`./model_cache/roberta`). The 478 MB model will be downloaded only once; all subsequent container launches will load in under 2 seconds.
+
+
+> The `model_cache` folder persists the RoBERTa model weights on your host machine (`./model_cache/roberta`). The 478 MB model will be downloaded only once, all subsequent container launches will load locally in under 2 seconds.
 
 ---
 
@@ -38,7 +39,7 @@ Ensure the PostgreSQL credentials and service URLs match your environment in `.e
 Build the shared base image containing Python 3.11, PyTorch CPU, spaCy (`en_core_web_sm`), Hugging Face Transformers, and FastAPI:
 
 ```bash
-docker build -f Dockerfile.base -t r1-sentiment-base:v2 --no-cache .
+docker build -f Dockerfile.base -t r1-sentiment-base:v3 --no-cache .
 ```
 
 ---
@@ -48,10 +49,10 @@ docker build -f Dockerfile.base -t r1-sentiment-base:v2 --no-cache .
 Build each service image using the local base image:
 
 ```bash
-docker build -t r1-service-phrase:v2 ./service-phrase
-docker build -t r1-service-sentiment:v2 ./service-sentiment
-docker build -t r1-service-score:v2 ./service-score
-docker build -t r1-api-gateway:v2 ./api-gateway
+docker build -t r1-service-phrase:v3 ./service-phrase
+docker build -t r1-service-sentiment:v3 ./service-sentiment
+docker build -t r1-service-score:v3 ./service-score
+docker build -t r1-api-gateway:v3 ./api-gateway
 ```
 
 ---
@@ -66,11 +67,11 @@ docker run -d \
   -p 8002:8002 \
   --env-file .env \
   -v "${PWD}/logs:/app/logs" \
-  r1-service-phrase:v2
+  r1-service-phrase:v3
 ```
 
 ### B. Sentiment & Emotion Service (Port 8003)
-> [!IMPORTANT]
+> IMPORTANT
 > - `-t` allocates a pseudo-TTY so the real-time download progress updates cleanly in-place on a single line.
 > - `-v "${PWD}/model_cache:/app/models"` mounts the model cache so the weights are persisted on the host.
 
@@ -82,7 +83,7 @@ docker run -d -t \
   --env-file .env \
   -v "${PWD}/logs:/app/logs" \
   -v "${PWD}/model_cache:/app/models" \
-  r1-service-sentiment:v2
+  r1-service-sentiment:v3
 ```
 
 ### C. Live Sentiment Score Service (Port 8004)
@@ -93,7 +94,7 @@ docker run -d \
   -p 8004:8004 \
   --env-file .env \
   -v "${PWD}/logs:/app/logs" \
-  r1-service-score:v2
+  r1-service-score:v3
 ```
 
 ---
@@ -107,7 +108,7 @@ docker run -d \
   -p 8000:8000 \
   --env-file .env \
   -v "${PWD}/logs:/app/logs" \
-  r1-api-gateway:v2
+  r1-api-gateway:v3
 ```
 
 ---
