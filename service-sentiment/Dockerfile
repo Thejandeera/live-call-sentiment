@@ -1,4 +1,4 @@
-FROM r1-sentiment-base:v2
+FROM r1-sentiment-base:v3
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 RUN mkdir -p /app/models

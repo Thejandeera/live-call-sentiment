@@ -62,10 +62,10 @@ class MessagePayload(BaseModel):
     peak_negativity: Optional[float] = None
     recent_scores: Optional[List[float]] = None
 
-PHRASE_SERVICE_URL = os.getenv("PHRASE_SERVICE_URL", "http://service-phrase:8002/extract-keywords")
-PHRASE_SERVICE_BASE = os.getenv("PHRASE_SERVICE_BASE", PHRASE_SERVICE_URL.rsplit('/', 1)[0] if (PHRASE_SERVICE_URL and '/' in PHRASE_SERVICE_URL) else (PHRASE_SERVICE_URL or "http://service-phrase:8002"))
-SENTIMENT_SERVICE_URL = os.getenv("SENTIMENT_SERVICE_URL", "http://service-sentiment:8003/analyze-sentiment")
-SCORE_SERVICE_URL = os.getenv("SCORE_SERVICE_URL", "http://service-score:8004/calculate-score")
+PHRASE_SERVICE_URL = os.getenv("PHRASE_SERVICE_URL", "http://service_phrase:8002/extract-keywords")
+PHRASE_SERVICE_BASE = os.getenv("PHRASE_SERVICE_BASE", PHRASE_SERVICE_URL.rsplit('/', 1)[0] if (PHRASE_SERVICE_URL and '/' in PHRASE_SERVICE_URL) else (PHRASE_SERVICE_URL or "http://service_phrase:8002"))
+SENTIMENT_SERVICE_URL = os.getenv("SENTIMENT_SERVICE_URL", "http://service_sentiment:8003/analyze-sentiment")
+SCORE_SERVICE_URL = os.getenv("SCORE_SERVICE_URL", "http://service_score:8004/calculate-score")
 DOWNSTREAM_TIMEOUT = float(os.getenv("DOWNSTREAM_TIMEOUT", "3.0"))
 
 http_client: Optional[httpx.AsyncClient] = None
