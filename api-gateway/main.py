@@ -70,6 +70,7 @@ DOWNSTREAM_TIMEOUT = float(os.getenv("DOWNSTREAM_TIMEOUT", "3.0"))
 
 http_client: Optional[httpx.AsyncClient] = None
 
+
 @app.on_event("startup")
 async def startup_event():
     global http_client
