@@ -207,10 +207,10 @@ def load_model():
 
             if has_weights and has_config:
                 print(f"[Sentiment Service] Loading pipeline from local path '{LOCAL_MODEL_DIR}'...")
-                roberta_model = pipeline("text-classification", model=str(LOCAL_MODEL_DIR))
+                roberta_model = pipeline("text-classification", model=str(LOCAL_MODEL_DIR), top_k=1)
             else:
                 print(f"[Sentiment Service] Loading pipeline from repo '{MODEL_NAME}'...")
-                roberta_model = pipeline("text-classification", model=MODEL_NAME)
+                roberta_model = pipeline("text-classification", model=MODEL_NAME, top_k=1)
 
             print("[Sentiment Service] RoBERTa model ready.")
         except Exception as e:
@@ -270,8 +270,10 @@ async def analyze_sentiment_batch(payload: BatchPayload):
 
     output = []
     for item, result in zip(payload.items, batch_results):
-        emotion = result["label"]
-        confidence = round(float(result["score"]), 4)
+        # top_k=1 returns a list per item — unwrap to get the top prediction dict
+        top = result[0] if isinstance(result, list) else result
+        emotion = top["label"]
+        confidence = round(float(top["score"]), 4)
         category = categorize_emotion(emotion, confidence)
 
         output.append({
