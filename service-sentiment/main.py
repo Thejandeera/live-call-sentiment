@@ -237,8 +237,10 @@ async def analyze_sentiment(payload: TextPayload):
         return {"emotion": "neutral", "sentiment_category": "neutral", "confidence": 0.0}
 
     with torch.inference_mode():
-        result = roberta_model(sentence.strip(), truncation=True, max_length=128)[0]
+        raw_result = roberta_model(sentence.strip(), truncation=True, max_length=128)[0]
 
+    # top_k=1 returns a list per item — unwrap to get the top prediction dict
+    result = raw_result[0] if isinstance(raw_result, list) else raw_result
     emotion = result["label"]
     confidence = round(float(result["score"]), 4)
     category = categorize_emotion(emotion, confidence)
