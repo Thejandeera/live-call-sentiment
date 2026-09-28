@@ -99,13 +99,13 @@ docker run -d \
 
 ---
 
-## 6. Run API Gateway (Port 8000)
+## 6. Run API Gateway (Port 8001)
 
 ```bash
 docker run -d \
   --name api-gateway \
   --network sentiment-network \
-  -p 8000:8000 \
+  -p 8001:8001 \
   --env-file .env \
   -v "${PWD}/logs:/app/logs" \
   r1-api-gateway:v3
@@ -142,7 +142,7 @@ docker logs -f service_score
 ## 8. Health Check Verification
 
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 curl http://localhost:8002/health
 curl http://localhost:8003/health
 curl http://localhost:8004/health
@@ -159,14 +159,14 @@ The API Gateway includes built-in fault tolerance and graceful degradation:
 
 ### Add a Keyword
 ```bash
-curl -X POST http://localhost:8000/api/v1/add-keyword \
+curl -X POST http://localhost:8001/api/v1/add-keyword \
   -H "Content-Type: application/json" \
   -d '{"keyword": "bad"}'
 ```
 
 ### Process Text (Caller Turn)
 ```bash
-curl -X POST http://localhost:8000/api/v1/process-text \
+curl -X POST http://localhost:8001/api/v1/process-text \
   -H "Content-Type: application/json" \
   -d '{"text": "its very bad, I am very disappointed", "speaker": "caller", "previous_score": -50}'
 ```

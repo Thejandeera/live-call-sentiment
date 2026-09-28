@@ -1,5 +1,5 @@
 ### 0a. API Gateway Health Check
-GET http://localhost:8000/health
+GET http://localhost:8001/health
 
 ### 0b. Phrase Service Health Check
 GET http://localhost:8002/health
@@ -11,7 +11,7 @@ GET http://localhost:8003/health
 GET http://localhost:8004/health
 
 ### 1a. Process Direct Text Message
-POST http://localhost:8000/api/v1/process-text
+POST http://localhost:8001/api/v1/process-text
 Content-Type: application/json
 
 {
@@ -19,7 +19,7 @@ Content-Type: application/json
 }
 
 ### 1b. Process Direct Text Message (Agent Response)
-POST http://localhost:8000/api/v1/process-text
+POST http://localhost:8001/api/v1/process-text
 Content-Type: application/json
 
 {
@@ -28,7 +28,7 @@ Content-Type: application/json
 }
 
 ### 1c. Process Message with Previous Score
-POST http://localhost:8000/api/v1/process-text
+POST http://localhost:8001/api/v1/process-text
 Content-Type: application/json
 
 {
@@ -38,7 +38,7 @@ Content-Type: application/json
 }
 
 ### 2a. Add Single Monitored Keyword with Category via API Gateway (PostgreSQL)
-POST http://localhost:8000/api/v1/add-keyword
+POST http://localhost:8001/api/v1/add-keyword
 Content-Type: application/json
 
 {
@@ -47,7 +47,7 @@ Content-Type: application/json
 }
 
 ### 2b. Add Single Monitored Keyword without Category (Defaults to NULL)
-POST http://localhost:8000/api/v1/add-keyword
+POST http://localhost:8001/api/v1/add-keyword
 Content-Type: application/json
 
 {
@@ -55,7 +55,7 @@ Content-Type: application/json
 }
 
 ### 2c. Add Multiple Monitored Keywords with Specific Categories in Batch
-POST http://localhost:8000/api/v1/add-keyword
+POST http://localhost:8001/api/v1/add-keyword
 Content-Type: application/json
 
 {
@@ -68,7 +68,7 @@ Content-Type: application/json
 }
 
 ### 2d. Add Multiple Monitored Keywords with Common Category
-POST http://localhost:8000/api/v1/add-keyword
+POST http://localhost:8001/api/v1/add-keyword
 Content-Type: application/json
 
 {
@@ -81,10 +81,10 @@ Content-Type: application/json
 }
 
 ### 2e. Get All Monitored Keywords via API Gateway (PostgreSQL)
-GET http://localhost:8000/api/v1/admin-keywords
+GET http://localhost:8001/api/v1/admin-keywords
 
 ### 2f. Delete a Monitored Keyword via API Gateway (PostgreSQL)
-DELETE http://localhost:8000/api/v1/delete-keyword/cancel%20account
+DELETE http://localhost:8001/api/v1/delete-keyword/cancel%20account
 
 ### 2g. Direct Phrase Service - Get Keywords
 GET http://localhost:8002/admin-keywords

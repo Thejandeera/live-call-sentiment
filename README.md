@@ -46,7 +46,7 @@ The platform is structured into four independent, decoupled microservices:
 
 ```text
 live-call-sentiment/
-├── api-gateway/            # Central orchestrator, connection pool & proxy (Port 8000)
+├── api-gateway/            # Central orchestrator, connection pool & proxy (Port 8001)
 ├── service-phrase/         # spaCy keyword extraction & PostgreSQL sync (Port 8002)
 ├── service-sentiment/      # RoBERTa 28-emotion classification engine (Port 8003)
 ├── service-score/          # Dual-Horizon mathematical scoring engine (Port 8004)
@@ -207,7 +207,7 @@ All configurable URLs, ports, CORS origins, PostgreSQL database credentials, and
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
 | **`API_GATEWAY_HOST`** | `0.0.0.0` | Gateway host bind address. |
-| **`API_GATEWAY_PORT`** | `8000` | Gateway port. |
+| **`API_GATEWAY_PORT`** | `8001` | Gateway port. |
 | **`CORS_ORIGINS`** | `http://localhost:3000,http://127.0.0.1:3000` | Allowed CORS origins (comma-separated). |
 | **`PHRASE_SERVICE_URL`** | `http://localhost:8002/extract-keywords` | URL to Phrase Service endpoint. |
 | **`SENTIMENT_SERVICE_URL`**| `http://localhost:8003/analyze-sentiment` | URL to Sentiment Service endpoint. |
@@ -270,8 +270,8 @@ Run the provided Windows startup script:
 Or start each microservice manually in separate terminal tabs:
 
 ```bash
-# Terminal 1: API Gateway (Port 8000)
-cd api-gateway && uvicorn main:app --port 8000 --reload
+# Terminal 1: API Gateway (Port 8001)
+cd api-gateway && uvicorn main:app --port 8001 --reload
 
 # Terminal 2: Phrase Extraction Service (Port 8002)
 cd service-phrase && uvicorn main:app --port 8002 --reload
@@ -329,8 +329,8 @@ docker run -d --name service_score --network sentiment-network -p 8004:8004 \
   --env-file .env -e LOG_DIR=/app/logs \
   -v "${PWD}/logs:/app/logs" service-score
 
-# 4. API Gateway (Port 8000)
-docker run -d --name api_gateway --network sentiment-network -p 8000:8000 \
+# 4. API Gateway (Port 8001)
+docker run -d --name api_gateway --network sentiment-network -p 8001:8001 \
   --env-file .env -e LOG_DIR=/app/logs \
   -e PHRASE_SERVICE_URL=http://service_phrase:8002/extract-keywords \
   -e SENTIMENT_SERVICE_URL=http://service_sentiment:8003/analyze-sentiment \
@@ -346,7 +346,7 @@ docker run -d --name api_gateway --network sentiment-network -p 8000:8000 \
 ## 7. API Reference & Data Contracts
 
 ### 7.1 Primary Ingress: `POST /api/v1/process-text`
-- **Host**: `http://localhost:8000`
+- **Host**: `http://localhost:8001`
 - **Description**: Main ingress called by client UI or ASR audio pipeline for each conversational turn.
 
 #### Request JSON:
@@ -487,18 +487,18 @@ A complete set of test requests is pre-configured in [`requests.http`](./request
 
 ```bash
 # Test API Gateway Health
-curl http://localhost:8000/health
+curl http://localhost:8001/health
 
 # Add Keyword to PostgreSQL
-curl -X POST http://localhost:8000/api/v1/add-keyword \
+curl -X POST http://localhost:8001/api/v1/add-keyword \
   -H "Content-Type: application/json" \
   -d "{\"keyword\": \"cancel subscription\"}"
 
 # Retrieve All Keywords
-curl http://localhost:8000/api/v1/admin-keywords
+curl http://localhost:8001/api/v1/admin-keywords
 
 # Process Test Turn with Keyword Detection
-curl -X POST http://localhost:8000/api/v1/process-text \
+curl -X POST http://localhost:8001/api/v1/process-text \
   -H "Content-Type: application/json" \
   -d "{\"text\": \"I want to cancel my subscription right now!\", \"speaker\": \"caller\", \"previous_score\": 0.0}"
 ```
